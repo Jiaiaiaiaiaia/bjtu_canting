@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>食堂就餐仿真系统</title>
+    <link rel="stylesheet" href="static/css/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>食堂就餐仿真系统</h1>
+        <nav>
+          <ul>
+            <li>
+              <a href="#config" class="nav-link" data-page="config">参数配置</a>
+            </li>
+            <li>
+              <a href="#simulation" class="nav-link" data-page="simulation"
+                >仿真运行</a
+              >
+            </li>
+            <li>
+              <a href="#analysis" class="nav-link" data-page="analysis"
+                >数据分析</a
+              >
+            </li>
+          </ul>
+        </nav>
+      </header>
+
+      <main>
+        <!-- 参数配置页面 -->
+        <section id="config-page" class="page">
+          <h2>仿真参数配置</h2>
+          <form id="config-form">
+            <div class="form-group">
+              <label for="window_count">窗口数量</label>
+              <input
+                type="number"
+                id="window_count"
+                name="window_count"
+                value="6"
+                min="1"
+                max="20"
+              />
+            </div>
+            <div class="form-group">
+              <label for="seat_count">总座位数</label>
+              <input
+                type="number"
+                id="seat_count"
+                name="seat_count"
+                value="120"
+                min="1"
+                max="500"
+              />
+            </div>
+            <div class="form-group">
+              <label for="avg_serve_time">平均打饭时长（秒）</label>
+              <input
+                type="number"
+                id="avg_serve_time"
+                name="avg_serve_time"
+                value="45"
+                min="5"
+                max="120"
+                step="0.1"
+              />
+            </div>
+            <div class="form-group">
+              <label for="avg_eat_time">平均就餐时长（分钟）</label>
+              <input
+                type="number"
+                id="avg_eat_time"
+                name="avg_eat_time"
+                value="10"
+                min="5"
+                max="60"
+                step="0.1"
+              />
+            </div>
+            <div class="form-group">
+              <label for="arrival_rate">每分钟到达人数</label>
+              <input
+                type="number"
+                id="arrival_rate"
+                name="arrival_rate"
+                value="10"
+                min="0.1"
+                max="20"
+                step="0.1"
+              />
+            </div>
+            <div class="form-group">
+              <label for="total_time">仿真总时长（分钟）</label>
+              <input
+                type="number"
+                id="total_time"
+                name="total_time"
+                value="60"
+                min="5"
+                max="180"
+              />
+            </div>
+            <div class="form-buttons">
+              <button type="button" id="reset-btn">恢复默认值</button>
+              <button type="submit" id="start-btn">开始仿真</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- 仿真运行页面 -->
+        <section id="simulation-page" class="page" style="display: none">
+          <h2>仿真运行</h2>
+          <div class="simulation-container">
+            <div class="info-panel">
+              <div class="info-item">
+                <span class="label">当前时间：</span>
+                <span id="current-time">00:00</span>
+              </div>
+              <div class="info-item">
+                <span class="label">总接待人数：</span>
+                <span id="total-arrived">0</span>
+              </div>
+              <div class="info-item">
+                <span class="label">已完成就餐：</span>
+                <span id="total-served">0</span>
+              </div>
+              <div class="info-item">
+                <span class="label">剩余空位：</span>
+                <span id="empty-seats">0</span>
+              </div>
+              <div class="info-item">
+                <span class="label">平均等待时间：</span>
+                <span id="avg-waiting-time">0.0</span>
+              </div>
+            </div>
+
+            <div
+              class="canteen-layout"
+              style="overflow: auto; max-height: 700px"
+            >
+              <canvas id="canteen-canvas" width="800" height="800"></canvas>
+            </div>
+
+            <div class="control-panel">
+              <button id="play-pause-btn">开始</button>
+              <div class="speed-control">
+                <label for="speed">速度：</label>
+                <select id="speed">
+                  <option value="1">×1</option>
+                  <option value="2">×2</option>
+                  <option value="5">×5</option>
+                </select>
+              </div>
+              <button id="end-btn">结束仿真</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 数据分析页面 -->
+        <section id="analysis-page" class="page" style="display: none">
+          <h2>数据分析</h2>
+          <div class="stats-overview">
+            <div class="stat-card">
+              <h3>总接待人数</h3>
+              <p id="stat-total-arrived">0</p>
+            </div>
+            <div class="stat-card">
+              <h3>平均等待时间</h3>
+              <p id="stat-avg-waiting">0.0秒</p>
+            </div>
+            <div class="stat-card">
+              <h3>峰值人数</h3>
+              <p id="stat-peak">0</p>
+            </div>
+            <div class="stat-card">
+              <h3>座位利用率</h3>
+              <p id="stat-seat-utilization">0%</p>
+            </div>
+          </div>
+
+          <div class="charts-container">
+            <div class="chart-item">
+              <h3>各窗口服务人数</h3>
+              <div id="window-chart" style="width: 100%; height: 300px"></div>
+            </div>
+            <div class="chart-item">
+              <h3>排队人数变化</h3>
+              <div id="queue-chart" style="width: 100%; height: 300px"></div>
+            </div>
+            <div class="chart-item">
+              <h3>座位利用率变化</h3>
+              <div id="seat-chart" style="width: 100%; height: 300px"></div>
+            </div>
+          </div>
+
+          <button id="restart-btn">重新仿真</button>
+        </section>
+      </main>
+    </div>
+
+    <script src="static/js/main.js"></script>
+  </body>
+</html>
