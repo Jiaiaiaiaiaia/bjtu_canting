@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Runtime database
+database/*.db
+database/*.db-journal
+database/*.sqlite
+database/*.sqlite-journal
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Brainstorming scratchpad
+.superpowers/
+
+# Archives
+*.rar
+*.zip

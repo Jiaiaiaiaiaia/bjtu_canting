@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>北京交通大学就餐仿真系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/vendor/echarts.min.js') }}"></script>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div class="header-left">
+            <div class="logo-block"></div>
+            <h1>北京交通大学就餐仿真系统</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="#" class="nav-link active" data-page="config">参数配置</a></li>
+                <li><a href="#" class="nav-link" data-page="simulation">仿真运行</a></li>
+                <li><a href="#" class="nav-link" data-page="analysis">数据分析</a></li>
+                <li><a href="#" class="nav-link" data-page="history">历史记录</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <!-- 参数配置页面 -->
+        <section id="config-page" class="page active">
+            <div class="config-card">
+                <h2>仿真参数配置</h2>
+                <p class="page-subtitle">配置完后点击开始仿真，自动跳转到仿真运行页</p>
+                <form id="config-form" class="config-form">
+                    <div class="form-group">
+                        <label for="window_count">窗口数量</label>
+                        <input type="number" id="window_count" name="window_count" value="6" min="1" max="20">
+                    </div>
+                    <div class="form-group">
+                        <label for="seat_count">总座位数</label>
+                        <input type="number" id="seat_count" name="seat_count" value="200" min="10" max="1000">
+                    </div>
+                    <div class="form-group">
+                        <label for="avg_serve_time">平均打饭时长（秒）</label>
+                        <input type="number" id="avg_serve_time" name="avg_serve_time" value="30" min="5" max="300" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label for="avg_eat_time">平均就餐时长（分钟）</label>
+                        <input type="number" id="avg_eat_time" name="avg_eat_time" value="15" min="1" max="60" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label for="arrival_rate">每分钟到达人数</label>
+                        <input type="number" id="arrival_rate" name="arrival_rate" value="5" min="0.1" max="50" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label for="total_time">仿真总时长（分钟）</label>
+                        <input type="number" id="total_time" name="total_time" value="60" min="5" max="240">
+                    </div>
+                    <div class="form-buttons">
+                        <button type="button" id="reset-btn">恢复默认值</button>
+                        <button type="submit" id="start-btn">开始仿真</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- 仿真运行页面 -->
+        <section id="simulation-page" class="page">
+            <h2>仿真运行</h2>
+            <div class="simulation-container">
+                <div class="info-panel">
+                    <div class="info-item"><span class="label">当前时间</span><span id="current-time">00:00</span></div>
+                    <div class="info-item"><span class="label">累计到达</span><span id="total-arrived">0</span></div>
+                    <div class="info-item"><span class="label">完成就餐</span><span id="total-served">0</span></div>
+                    <div class="info-item"><span class="label">正在就餐</span><span id="total-eating">0</span></div>
+                    <div class="info-item"><span class="label">排队总数</span><span id="total-in-queue">0</span></div>
+                    <div class="info-item"><span class="label">剩余空位</span><span id="empty-seats">0</span></div>
+                    <div class="info-item info-item-highlight"><span class="label">平均等待</span><span id="avg-waiting">0.0 s</span></div>
+                </div>
+
+                <div class="canteen-layout">
+                    <div class="canvas-header">
+                        <span class="canvas-title">食堂平面布局</span>
+                        <span class="canvas-legend-bar" id="canvas-legend-bar"></span>
+                    </div>
+                    <canvas id="canteen-canvas" width="900" height="640"></canvas>
+                </div>
+
+                <div class="control-panel">
+                    <button id="play-pause-btn">开始</button>
+                    <div class="speed-control">
+                        <label for="speed-range">速度</label>
+                        <input type="range" id="speed-range" min="0" max="3" step="1" value="1">
+                        <span id="speed-label">×2</span>
+                    </div>
+                    <button id="end-btn">结束仿真</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 数据分析页面 -->
+        <section id="analysis-page" class="page">
+            <h2>数据分析</h2>
+            <div class="stats-overview">
+                <div class="stat-card">
+                    <h3>总接待人数</h3><p id="stat-total-arrived">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>完成就餐人数</h3><p id="stat-total-served">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>平均等待时间</h3><p id="stat-avg-waiting">0.0 s</p>
+                </div>
+                <div class="stat-card">
+                    <h3>平均就餐时间</h3><p id="stat-avg-eating">0.0 min</p>
+                </div>
+                <div class="stat-card">
+                    <h3>峰值排队人数</h3><p id="stat-peak">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>座位利用率</h3><p id="stat-seat-utilization">0%</p>
+                </div>
+            </div>
+
+            <div class="charts-container">
+                <div class="chart-item">
+                    <h3>各窗口服务人数</h3>
+                    <div id="window-chart" class="chart"></div>
+                </div>
+                <div class="chart-item">
+                    <h3>窗口利用率</h3>
+                    <div id="pie-chart" class="chart"></div>
+                </div>
+                <div class="chart-item">
+                    <h3>排队人数变化</h3>
+                    <div id="queue-chart" class="chart"></div>
+                </div>
+                <div class="chart-item">
+                    <h3>座位利用率变化</h3>
+                    <div id="seat-chart" class="chart"></div>
+                </div>
+            </div>
+
+            <div class="page-actions">
+                <button id="restart-btn">重新仿真</button>
+            </div>
+        </section>
+
+        <!-- 历史记录页面 -->
+        <section id="history-page" class="page">
+            <h2>历史记录</h2>
+            <div class="history-toolbar">
+                <button id="history-refresh-btn">刷新列表</button>
+                <span class="history-hint">点击任意一行可查看该次仿真的排队/就餐随时间变化曲线。</span>
+            </div>
+            <div class="history-table-wrap">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>创建时间</th>
+                            <th>窗口</th>
+                            <th>座位</th>
+                            <th>打饭(s)</th>
+                            <th>就餐(min)</th>
+                            <th>到达率</th>
+                            <th>时长(min)</th>
+                            <th>到达</th>
+                            <th>完成</th>
+                            <th>快照</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-tbody">
+                        <tr><td colspan="11" class="history-empty">暂无历史记录，先跑一次仿真吧。</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="history-detail" class="history-detail" hidden>
+                <h3 id="history-detail-title"></h3>
+                <div id="history-detail-chart" class="chart"></div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
