@@ -552,7 +552,7 @@ def test_arrival_rate_formula():
     # ArrivalGenerator 第 1 个参数 env 即可，其他可用 mock。
     gen = ArrivalGenerator(env, cfg, canteens={}, router=None,
                            campus=None, coordinator=None, rng=random.Random(42))
-    expected = 28000 * 0.65 * 0.78 / 90
+    expected = 28000 * 0.65 * 0.65 / 90
     assert abs(gen._compute_arrival_rate_per_minute() - expected) < 0.01
 
 def test_poisson_interval_distribution():
