@@ -286,6 +286,7 @@ class Student:
     eat_time: float = 0.0
     switch_count: int = 0
     patience_threshold: float = 180.0  # 创建时按正态分布采样
+    walking_start_time: float = 0.0    # Coordinator 维护，给 Campus.transit_progress 用
 ```
 
 显式存储所有状态字段，不依赖生成器隐式状态。
@@ -307,7 +308,9 @@ def student_lifecycle(env, student, router, canteens, campus, coordinator):
     student.target_canteen_id = target.id
     student.state = "walking"
     walk = campus.walking_time_from_entrance(target.id)
+    coordinator.on_student_walking_start(student)
     yield env.timeout(walk)
+    coordinator.on_student_walking_end(student)
     student.walk_time += walk
     student.current_canteen_id = target.id
     canteens[target.id].total_arrived += 1
@@ -341,9 +344,12 @@ def student_lifecycle(env, student, router, canteens, campus, coordinator):
                         student.switch_count += 1
                         student.state = "switching"
                         walk = campus.walking_time(canteen.id, alt.id)
+                        coordinator.on_student_walking_start(student)
                         yield env.timeout(walk)
+                        coordinator.on_student_walking_end(student)
                         student.walk_time += walk
-                        canteens[canteen.id].total_arrived  # 不变
+                        # 注意：原食堂 total_arrived 不递减；切换会让
+                        # sum(canteens.total_arrived) > coordinator.total_arrived。
                         student.current_canteen_id = alt.id
                         canteens[alt.id].total_arrived += 1
                         continue  # with 退出 → req 释放
@@ -353,6 +359,7 @@ def student_lifecycle(env, student, router, canteens, campus, coordinator):
                 # 拿到资源（可能是首次 req 满足，也可能是硬等满足）
                 queue_phase_total_wait += env.now - wait_start
                 student.wait_time = queue_phase_total_wait
+                coordinator.stats.record_wait(student)
 
                 window.start_serving(student)
                 student.state = "serving"
@@ -391,6 +398,7 @@ def student_lifecycle(env, student, router, canteens, campus, coordinator):
         student.state = "left"
         canteen.total_served += 1
         coordinator.on_student_left(student)
+        coordinator.stats.record_completion(student)
     finally:
         canteen.leave_seat_queue(student)  # 异常路径兜底
 ```
@@ -405,11 +413,19 @@ class CampusCoordinator:
             d["id"]: Canteen(env, d) for d in config["canteens"]
         }
         self.campus = Campus(config["campus"], self.canteens)
-        self.router = StudentRouter(env, config["router"], self.campus, rng)
+        # config["router"] 是来自 JSON 的 dict，转成 dataclass 再传给 Router
+        router_cfg = RouterConfig(**config["router"])
+        self.router = StudentRouter(env, router_cfg, self.campus, rng)
         self.stats = CampusStats()
+        self.arrival_generator = ArrivalGenerator(
+            env, config["campus"], self.canteens, self.router, self.campus, self, rng
+        )
 
-        # 校园级累计：不依赖 sum(canteen.total_arrived)，因为在路上的学生
-        # 已经"到达校园"但尚未关联到任何食堂。
+        # 校园级累计：不依赖 sum(canteen.total_arrived)。
+        # sum(canteen.total_arrived) 与 self.total_arrived 之间存在两类差异：
+        #   (a) 在路上的学生已"到达校园"但尚未到达任何食堂；
+        #   (b) 跨食堂迁移会让一名学生在多个 canteen.total_arrived 上各 +1，
+        #       即 sum 值会因切换次数而高估。
         self.all_students: list[Student] = []
         self.transit_students: list[Student] = []
         self.total_arrived: int = 0
@@ -418,6 +434,15 @@ class CampusCoordinator:
     def on_student_arrived(self, student: Student):
         self.total_arrived += 1
         self.all_students.append(student)
+
+    def on_student_walking_start(self, student: Student):
+        self.transit_students.append(student)
+        student.walking_start_time = self.env.now      # 给 Campus.transit_progress 用
+
+    def on_student_walking_end(self, student: Student):
+        if student in self.transit_students:
+            self.transit_students.remove(student)
+        student.walking_start_time = 0.0
 
     def on_student_left(self, student: Student):
         self.total_served += 1
@@ -552,7 +577,190 @@ class StudentRouter:
         return None
 ```
 
-### 2.8 学生决策模型说明（写入实训报告）
+### 2.8 Campus（校园拓扑）
+
+`Campus` 类封装校园物理布局：入口位置、各食堂坐标、食堂间步行时间矩阵。`CampusCoordinator` 持有一个 `Campus` 实例，`student_lifecycle` 通过它查询走路时间，`Campus.transit_progress` 给前端 3D 提供"在路上学生"的位置插值。
+
+**配置 schema**（`config["campus"]` 部分）：
+
+```json
+{
+  "campus": {
+    "total_students": 28000,
+    "lunch_alpha": 0.65,
+    "coverage": 0.78,
+    "peak_window_minutes": 90,
+    "peak_beta": 1.5,
+    "entrance_position": {"x": 0, "y": 0},
+    "walking_time_seconds": {
+      "xueyi":   {"xueer": 120, "xueyuan": 240, "siyuan": 180},
+      "xueer":   {"xueyi": 120, "xueyuan": 150, "siyuan": 90},
+      "xueyuan": {"xueyi": 240, "xueer": 150, "siyuan": 120},
+      "siyuan":  {"xueyi": 180, "xueer": 90,  "xueyuan": 120}
+    },
+    "walking_speed_mps": 1.4,
+    "entrance_walk_seconds": {
+      "xueyi": 90, "xueer": 60, "xueyuan": 150, "siyuan": 120
+    }
+  }
+}
+```
+
+**Campus 类**：
+
+```python
+class Campus:
+    def __init__(self, campus_config: dict, canteens: dict):
+        self.config = campus_config
+        self.canteens = canteens
+        self.entrance_pos = campus_config["entrance_position"]
+        self.walking_speed = campus_config.get("walking_speed_mps", 1.4)
+        self._matrix = campus_config.get("walking_time_seconds", {})
+        self._entrance_walks = campus_config.get("entrance_walk_seconds", {})
+
+    def walking_time_from_entrance(self, canteen_id: str) -> float:
+        """学生从校园入口走到指定食堂的时间（秒）。
+        优先用预设手测值；缺失则按欧氏距离 / walking_speed 估算。
+        """
+        if canteen_id in self._entrance_walks:
+            return self._entrance_walks[canteen_id]
+        c = self.canteens[canteen_id]
+        dx = c.campus_position["x"] - self.entrance_pos["x"]
+        dy = c.campus_position["y"] - self.entrance_pos["y"]
+        return ((dx * dx + dy * dy) ** 0.5) / self.walking_speed
+
+    def walking_time(self, from_id: str, to_id: str) -> float:
+        """两个食堂之间的步行时间（秒），对称。
+        优先用预设手测值；缺失则按欧氏距离 / walking_speed 估算。
+        """
+        if from_id == to_id:
+            return 0.0
+        m = self._matrix.get(from_id, {})
+        if to_id in m:
+            return m[to_id]
+        # 反向键查找
+        m_rev = self._matrix.get(to_id, {})
+        if from_id in m_rev:
+            return m_rev[from_id]
+        # Fallback：欧氏距离
+        a = self.canteens[from_id].campus_position
+        b = self.canteens[to_id].campus_position
+        dx = a["x"] - b["x"]
+        dy = a["y"] - b["y"]
+        return ((dx * dx + dy * dy) ** 0.5) / self.walking_speed
+
+    def transit_progress(self, student: Student, now: float) -> float:
+        """学生当前走路完成度（0.0-1.0），给前端 3D 在路上插值用。
+        在 student.state == 'walking' 或 'switching' 期间有意义。
+        """
+        if student.walking_start_time <= 0:
+            return 0.0
+        from_id = student.current_canteen_id
+        to_id = student.target_canteen_id
+        if from_id is None:
+            total = self.walking_time_from_entrance(to_id)
+        else:
+            total = self.walking_time(from_id, to_id)
+        if total <= 0:
+            return 1.0
+        elapsed = now - student.walking_start_time
+        return max(0.0, min(1.0, elapsed / total))
+```
+
+### 2.9 ArrivalGenerator（学生到达生成器）
+
+`ArrivalGenerator` 是校园模式下唯一的学生工厂：按 Phase 2 同样的 Poisson 过程从校园入口生成学生（不是从某个食堂），交给 `student_lifecycle` 处理。
+
+```python
+class ArrivalGenerator:
+    def __init__(self, env, campus_config, canteens, router, campus, coordinator, rng):
+        self.env = env
+        self.config = campus_config
+        self.canteens = canteens
+        self.router = router
+        self.campus = campus
+        self.coordinator = coordinator
+        self.rng = rng
+        self._next_student_id = 0
+        self._process = env.process(self._run())
+
+    def _compute_arrival_rate_per_minute(self) -> float:
+        """根据 §3.4 公式计算 λ（人/分钟）。
+        第一版用恒定 λ_avg；部署阶段灵敏度分析可叠加 peak_beta 时间段。
+        """
+        N = self.config["total_students"]
+        alpha = self.config["lunch_alpha"]
+        coverage = self.config["coverage"]
+        T = self.config["peak_window_minutes"]
+        return N * alpha * coverage / T
+
+    def _spawn_student(self) -> Student:
+        student = Student(
+            id=self._next_student_id,
+            state="arriving",
+            patience_threshold=self.router.sample_patience(),
+        )
+        self._next_student_id += 1
+        return student
+
+    def _run(self):
+        """Poisson 到达过程，每名学生 yield 一个 student_lifecycle 进程。"""
+        rate_per_sec = self._compute_arrival_rate_per_minute() / 60.0
+        while True:
+            interval = self.rng.expovariate(rate_per_sec)
+            yield self.env.timeout(interval)
+            student = self._spawn_student()
+            self.env.process(student_lifecycle(
+                self.env, student, self.router,
+                self.canteens, self.campus, self.coordinator,
+            ))
+```
+
+单食堂模式不使用 `ArrivalGenerator`；`SimulationEngine` 兼容门面继续走 Phase 2 原有的 `_generate_arrival_events` 路径。
+
+### 2.10 CampusStats（校园级统计聚合）
+
+```python
+class CampusStats:
+    """聚合"已完成学生"的关键指标，给 snapshot.campus_totals.avg_waiting_time 等用。"""
+
+    def __init__(self):
+        self._wait_times: list[float] = []
+        self._walk_times: list[float] = []
+        self._switch_counts: list[int] = []
+
+    def record_wait(self, student: Student):
+        """student_lifecycle 在拿到资源 / 进入服务态时调用。"""
+        self._wait_times.append(student.wait_time)
+
+    def record_completion(self, student: Student):
+        """student_lifecycle 在 'left' 态时调用，记录全过程指标。"""
+        self._walk_times.append(student.walk_time)
+        self._switch_counts.append(student.switch_count)
+
+    def avg_waiting_time(self) -> float:
+        if not self._wait_times:
+            return 0.0
+        return sum(self._wait_times) / len(self._wait_times)
+
+    def avg_walk_time(self) -> float:
+        if not self._walk_times:
+            return 0.0
+        return sum(self._walk_times) / len(self._walk_times)
+
+    def switch_rate(self) -> float:
+        """切换学生比例 = 至少切换 1 次的学生 / 总记录学生。"""
+        if not self._switch_counts:
+            return 0.0
+        switched = sum(1 for c in self._switch_counts if c > 0)
+        return switched / len(self._switch_counts)
+```
+
+`student_lifecycle` 在两处调用 `stats`：
+- 拿到资源进入服务态时：`coordinator.stats.record_wait(student)`
+- 学生 `state == "left"` 时：`coordinator.stats.record_completion(student)`
+
+### 2.11 学生决策模型说明（写入实训报告）
 
 > **学生跨食堂迁移采用基于个体耐心阈值与总耗时估算的决策模型。** 每个学生在创建时按正态分布采样耐心阈值，模拟群体差异。当排队等待超过该阈值，学生估算其他食堂的"走路时间 + 预期等待"——预期等待来源默认为"局部估计"模式（基于食堂调研得到的典型等待时间，模拟学生凭经验/口碑判断），可切换至"实时拥挤"模式（模拟校园 App 提供实时数据）作为对照。仅当当前队伍剩余等待 > 候选食堂总耗时 × switch_improvement_ratio（默认 1.3）时学生才迁移；同时设置每学生最大切换次数防止无意义振荡。该模型在不引入全知优化的前提下，能够再现"看到队太长就走"的现实行为，并为参数敏感度分析提供研究空间。
 
@@ -817,7 +1025,7 @@ CREATE TABLE walking_time (
 
 ### 6.1 集成阶段（保留 Phase 2 Canvas，扩展控制层与 namespace）
 
-**最小改动原则**：`drawWindows / drawSeats / drawStudentDots` 三个绘制函数一行不动；运行控制层（`tick / fetch / finish / reset / loadStatistics`）按 mode 分派。
+**最小改动原则**：`drawWindows / drawSeats / drawStudentDots` 三个绘制函数一行不动；运行控制层（轮询循环 / `dispatchStep` / `finish` / `reset` / `loadStatistics`）按 mode 分派。
 
 **文件结构**：
 
@@ -879,7 +1087,7 @@ async function dispatchStep() {
 
 | 模块 | 职责 |
 |---|---|
-| `main.js` | mode 分派；`configForm.submit` / `tick` / `endBtn` / `restartBtn` / `loadStatistics` 主流程 |
+| `main.js` | mode 分派；`configForm.submit` / 轮询循环（含 `dispatchStep`）/ `endBtn` / `restartBtn` / `loadStatistics` 主流程 |
 | `campus.js` | `pickCanteenView` / `fillCanteenSelect` / `refreshCampusView` / `renderCampusCharts`；不持有控制流 |
 
 `campus.js` 关键实现：
@@ -1218,3 +1426,4 @@ flask-cors>=4.0.0
 | 版本 | 日期 | 变更 | 作者 |
 |---|---|---|---|
 | v1.0 | 2026-04-28 | 初稿：完成多食堂扩展 + 沉浸式可视化的总体方案设计、模块边界、接口草案、测试矩阵、时间线 | 朱思思 |
+| v1.1 | 2026-04-28 | 内部交叉评审反馈修订：补充 Campus（§2.8）/ ArrivalGenerator（§2.9）/ CampusStats（§2.10）三个原本被引用但未定义的辅助类；补 transit_students 在 lifecycle 中的 walking_start / walking_end 钩子；明确 RouterConfig 由 dict 转 dataclass；补 stats.record_wait / record_completion 接入点；澄清 sum(canteen.total_arrived) 与 coordinator.total_arrived 的两类差异；删除 §2.5 一处空操作语句；§6.1 措辞从 "tick" 改为 "轮询循环 / dispatchStep" | 朱思思 |
