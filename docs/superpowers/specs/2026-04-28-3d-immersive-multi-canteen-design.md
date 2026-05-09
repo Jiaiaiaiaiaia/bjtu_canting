@@ -12,7 +12,7 @@
 
 本文档描述在 Phase 2（开发阶段）已交付的"通用单食堂仿真系统"基础上，集成阶段与部署阶段计划进行的两类扩展：
 
-1. **多食堂联合仿真**：从单一通用食堂扩展为北京交通大学主校区 4 个真实食堂的联合仿真，引入学生跨食堂迁移决策模型；
+1. **多食堂联合仿真**：从单一通用食堂扩展为北京交通大学主校区 3 个真实食堂的联合仿真，引入学生跨食堂迁移决策模型；
 2. **沉浸式可视化**：在部署阶段将 2D Canvas 升级为 Three.js 3D 校园场景与食堂内部场景，提供 2D / 3D 双视图。
 
 **Phase 2 交付物（开发阶段，2026-05-03 提交）不修改、不替换。** 本文档所述全部改动以"在已稳定单食堂内核基础上叠加新能力"的方式实施，对外保留单食堂模式与原 API 完全兼容，新增校园联合模式走独立 API 入口。
@@ -79,7 +79,6 @@ backend/
 │   ├── coordinator.py       # CampusCoordinator 校园协调器
 │   ├── stats.py             # 统计指标采集（按 canteen_id 分组）
 │   └── presets/             # 北交大主校区食堂参数预设（JSON）
-│       ├── xueyuan.json         # 学苑食堂
 │       ├── minghu_xueyi.json    # 明湖学一食堂
 │       ├── xuehuo.json          # 学活食堂
 │       └── xuesi.json           # 学四食堂
@@ -682,20 +681,19 @@ class StudentRouter:
   "campus": {
     "total_students": 28000,
     "lunch_alpha": 0.65,
-    "coverage": 0.78,
+    "coverage": 0.65,
     "peak_window_minutes": 90,
     "peak_beta": 1.5,
     "simulation_seconds": 5400,
     "entrance_position": {"x": 0, "y": 0},
     "walking_time_seconds": {
-      "xueyuan":        {"minghu_xueyi": 180, "xuehuo": 120, "xuesi": 240},
-      "minghu_xueyi":   {"xueyuan": 180, "xuehuo": 150, "xuesi": 90},
-      "xuehuo":         {"xueyuan": 120, "minghu_xueyi": 150, "xuesi": 200},
-      "xuesi":          {"xueyuan": 240, "minghu_xueyi": 90,  "xuehuo": 200}
+      "minghu_xueyi":   {"xuehuo": 150, "xuesi": 90},
+      "xuehuo":         {"minghu_xueyi": 150, "xuesi": 200},
+      "xuesi":          {"minghu_xueyi": 90,  "xuehuo": 200}
     },
     "walking_speed_mps": 1.4,
     "entrance_walk_seconds": {
-      "xueyuan": 120, "minghu_xueyi": 90, "xuehuo": 60, "xuesi": 180
+      "minghu_xueyi": 90, "xuehuo": 60, "xuesi": 180
     }
   }
 }
@@ -883,16 +881,15 @@ class CampusStats:
 
 ## 3. 实地调研与真实数据接入
 
-### 3.1 食堂候选清单（主校区 4 食堂，2026-05-04 至 2026-05-05 实地核验）
+### 3.1 食堂候选清单（主校区 3 食堂，2026-05-04 至 2026-05-05 实地核验）
 
-主校区目标调研 4 个学生食堂：
+主校区目标调研 3 个学生食堂：
 
 | code（preset 内引用） | display_name | 备注 |
 |---|---|---|
-| `xueyuan` | 学苑食堂 | 学苑区域 |
-| `minghu_xueyi` | 明湖学一食堂 | 明湖区域 |
+| `minghu_xueyi` | 明湖学一食堂 | 明湖区域；3 层 ~33 窗口 ~734 座，主校区最大食堂 |
 | `xuehuo` | 学活食堂 | 学生活动中心 |
-| `xuesi` | 学四食堂 | 学四区域 |
+| `xuesi` | 学四食堂 | 学四区域；2 层 ~10 窗口 ~300 座 |
 
 **第一版排除**：
 - 教职工食堂（学生流量低）
@@ -968,11 +965,11 @@ class CampusStats:
 | `arrival_weight` | 学生初次选择的相对受欢迎度 | 由组内据观察人流量经验定，默认 1.0 |
 | `typical_wait_seconds` | "凭印象/口碑"的典型等待时长 | 调研：当日中午高峰最长等待估算 |
 
-**单食堂模式向后兼容**：Phase 2 的 6 字段 config 没有 `floors`，由兼容门面在内部包装成"单楼层"结构。新写的 4 食堂 preset 都按 `floors[]` 填。
+**单食堂模式向后兼容**：Phase 2 的 6 字段 config 没有 `floors`，由兼容门面在内部包装成"单楼层"结构。新写的 3 食堂 preset 都按 `floors[]` 填。
 
 ### 3.3 实地调研操作流程
 
-每食堂约 20 分钟，4 食堂可在一个中午高峰期完成。建议时间：5/4-5/5 中午。
+每食堂约 20 分钟，3 食堂在一个中午高峰期足够调完。建议时间：5/4-5/5 中午。
 
 **采集项目**：
 
@@ -983,7 +980,7 @@ class CampusStats:
 | `avg_serve_time_seconds` | 用计时器测连续 5 个学生的服务间隔，普通窗 1 组、最慢窗 1 组，加权平均 |
 | `seats.count` | 数 1-2 排桌椅，乘以排数；误差 ±20% 可接受 |
 | `observed_peak_queue` | 12:15 拍 1 张全景照，回看数最长队人头 |
-| 食堂间步行时间 | 手机记录步行秒数；4 食堂间共 6 对 |
+| 食堂间步行时间 | 手机记录步行秒数；3 食堂间共 3 对 |
 | 平面图 / 标牌 / 菜单 | 拍照存档，作为 3D 场景设计参考 |
 
 报告记录两个口径：仿真用 `active_count`，背景说明里写 `physical_count`，避免被问"现场 12 窗 vs 仿真 8 窗哪个对"。
@@ -1001,7 +998,7 @@ class CampusStats:
 |---|---|---|
 | N | 主校区在校学生总数 | 由组内提供（如 28000） |
 | α | 食堂午餐覆盖率（在食堂吃午饭的比例） | 0.65（取自校园生活调查文献中位估计） |
-| coverage | 本次建模 4 食堂在主校区学生食堂总流量中的占比 | 0.78（按调研结果定） |
+| coverage | 本次建模 3 食堂在主校区学生食堂总流量中的占比 | 0.65（按调研定，建议 0.60-0.70；3 食堂规模占主校区"主流"但非"全部"，覆盖率不应继续假设 78%） |
 | T | 午餐高峰窗口长度（分钟） | 90 |
 | β | 短时峰值放大系数 | 1.5（仅作压力测试场景） |
 
@@ -1064,23 +1061,22 @@ class CampusStats:
   "current_time": 1230.5,
   "mode": "campus",
   "canteens": {
-    "xueyuan":       { "...": "Canteen.snapshot() 的输出，与 Phase 2 形状兼容" },
-    "minghu_xueyi":  { "..." : "..." },
+    "minghu_xueyi":  { "...": "Canteen.snapshot() 的输出，与 Phase 2 形状兼容" },
     "xuehuo":        { "..." : "..." },
     "xuesi":         { "..." : "..." }
   },
-  "canteen_order": ["xueyuan", "minghu_xueyi", "xuehuo", "xuesi"],
+  "canteen_order": ["minghu_xueyi", "xuehuo", "xuesi"],
   "in_transit": [
     {
       "id": 1023,
-      "from_canteen_id": "xueyuan",
-      "to_canteen_id": "minghu_xueyi",
+      "from_canteen_id": "minghu_xueyi",
+      "to_canteen_id": "xuehuo",
       "progress": 0.42
     },
     {
       "id": 1024,
       "from_canteen_id": null,
-      "to_canteen_id": "xueyuan",
+      "to_canteen_id": "xuesi",
       "progress": 0.18
     }
   ],
@@ -1152,8 +1148,8 @@ CREATE TABLE campus_snapshot (
 ```sql
 CREATE TABLE canteen_definition (
     id INTEGER PRIMARY KEY,
-    code TEXT UNIQUE NOT NULL,             -- "xueyuan" / "minghu_xueyi" / "xuehuo" / "xuesi"
-    display_name TEXT NOT NULL,            -- "学苑食堂" / "明湖学一食堂" 等
+    code TEXT UNIQUE NOT NULL,             -- "minghu_xueyi" / "xuehuo" / "xuesi"
+    display_name TEXT NOT NULL,            -- "明湖学一食堂" / "学活食堂" / "学四食堂"
     location_x REAL,
     location_y REAL,
     physical_window_count INTEGER,
@@ -1184,7 +1180,7 @@ CREATE TABLE walking_time (
 
 | 层 | 视图 | 数据源 | 集成阶段实现 | 部署阶段实现 |
 |---|---|---|---|---|
-| 1 | **校园地图总览** | `/api/campus/step` 整体响应 | SVG 校园缩略图 + 4 食堂热度 + 在路上学生小点 | Three.js 3D 校园场景 |
+| 1 | **校园地图总览** | `/api/campus/step` 整体响应 | SVG 校园缩略图 + 3 食堂热度 + 在路上学生小点 | Three.js 3D 校园场景 |
 | 2 | **食堂下钻视图** | `snapshot.canteens[active_id]` | 现有 Canvas 不动（按 active_floor 过滤 windows/seats/students） | Three.js 3D 食堂内部 |
 | 3 | **楼层 Tab** | `canteen_view.floors[]` | `[1F] [2F]` 按钮，切换 active_floor 触发 Canvas 重绘 | 3D 多层建模，相机切换楼层 |
 
@@ -1258,7 +1254,7 @@ async function dispatchStep() {
 |---|---|
 | `main.js` | mode 分派；`configForm.submit` / 轮询循环（含 `dispatchStep`）/ `endBtn` / `restartBtn` / `loadStatistics` 主流程；view 切换（校园 ↔ 食堂） |
 | `campus.js` | 食堂下钻层（第 2 层）：`pickCanteenView` / `fillCanteenSelect` / `refreshCanteenDrilldown` / `updateCampusOverview` / `renderCampusCharts`；不持有控制流 |
-| `campus_map.js` | 校园地图层（第 1 层）：SVG 渲染 4 食堂位置 + 当前人数热度 + 在路上学生小点；点击食堂方块触发 view='canteen' + activeCanteenId |
+| `campus_map.js` | 校园地图层（第 1 层）：SVG 渲染 3 食堂位置 + 当前人数热度 + 在路上学生小点；点击食堂方块触发 view='canteen' + activeCanteenId |
 | `floor_tabs.js` | 楼层 Tab 层（第 3 层）：根据当前 canteen.floors[] 渲染 `[1F][2F]` 按钮；按 activeFloorId 过滤 windows/seats/students 后调用 drawCanteen |
 
 `campus.js` 关键实现：
@@ -1633,7 +1629,7 @@ three/
 1. 集成阶段任务（个人承担）
 2. 技术选型变更（含本文档 §1.4 标准措辞）
 3. 多食堂扩展：架构图 + StudentRouter 决策模型说明
-4. 实地调研：4 食堂数据采集结果（朱思思那份重点写）
+4. 实地调研：3 食堂数据采集结果（朱思思那份重点写）
 5. 联调过程与典型问题解决
 6. 工具使用与 AI 使用记录
 7. 进入部署阶段前的准备
@@ -1675,7 +1671,7 @@ three/
 |---|---|---|---|---|
 | 第 9 周 | 4/28-5/3 | 多食堂联合仿真方案设计、技术路线论证、接口草案与调研计划制定 + Phase 2 收尾打包 | 现有 main.js 抽 namespace 准备工作 | 协助调研规划 + Phase 2 文档收尾 |
 | 第 9 周末 | 5/3 | **Phase 2 开发阶段交付（任务书 ddl）** | 同 | 同 |
-| 第 10 周 | 5/4-5/10 | 实地调研 4 食堂（5/4-5/5 周一二中午高峰，**记录每食堂楼层数与各楼层窗口/座位数**）+ SimPy 重构 `engine.py` 兼容门面骨架 | `main.js` 控制层重构（namespace + dispatchStep + view/activeFloorId 状态） | 调研数据回填 `presets/*.json`（**按 floors[] 嵌套结构填**） |
+| 第 10 周 | 5/4-5/10 | 实地调研 3 食堂（5/4-5/5 周一二中午高峰，**记录每食堂楼层数与各楼层窗口/座位数**）+ SimPy 重构 `engine.py` 兼容门面骨架 | `main.js` 控制层重构（namespace + dispatchStep + view/activeFloorId 状态） | 调研数据回填 `presets/*.json`（**按 floors[] 嵌套结构填**） |
 | 第 11 周 | 5/11-5/17 | `canteen.py`（含多楼层展开）/ `student.py / router.py / coordinator.py / arrival_generator.py / campus.py / stats.py / campus_routes.py` + DB 迁移 | `campus.js` 食堂下钻 + `campus_map.js` SVG 校园地图 + `floor_tabs.js` 楼层 Tab + index.html 三层视图框架 + style.css | 跑参数标定 / 文献查 α 值 / 校园地图坐标系敲定 |
 | 第 12 周 | 5/18-5/22 | 单测全部铺开（约 80 条），跑通联调 | 校园 ECharts 对比图 + Tab 切换 + 联调 + 楼层切换交互 | 联调测试报告草稿 + 沟通记录 |
 | 第 12 周末 | 5/23 | 全队跑过验收 demo（单食堂 / 校园 双模式） | 同 | 同 |
@@ -1726,15 +1722,15 @@ three/
 
 - [ ] 单测目标不少于 80 条（Phase 2 兼容回归 39 条 + 新增约 42 条，含 multi-floor / arrival_generator / 4 个 v1.3 bug 回归）全部通过
 - [ ] 单食堂模式与 Phase 2 行为完全一致（手测 + 自动回归；含 seat status="empty" / total_arrived 等关键字段）
-- [ ] 校园模式：4 食堂联合跑通、能切换、能下钻、有跨食堂学生迁移现象
-- [ ] 三层视图全部可用：校园地图（SVG，4 食堂热度 + 在路上学生）→ 食堂下钻（Canvas）→ 楼层 Tab（多层食堂可切换楼层）
-- [ ] 4 个 BJTU 食堂 preset 含真实调研数据，**多层食堂的 floors[] 结构填齐每层窗口/座位/layout**
+- [ ] 校园模式：3 食堂联合跑通、能切换、能下钻、有跨食堂学生迁移现象
+- [ ] 三层视图全部可用：校园地图（SVG，3 食堂热度 + 在路上学生）→ 食堂下钻（Canvas）→ 楼层 Tab（多层食堂可切换楼层）
+- [ ] 3 个 BJTU 食堂 preset 含真实调研数据，**多层食堂的 floors[] 结构填齐每层窗口/座位/layout**
 - [ ] 6 份新文档（团队 3 份：联调测试报告 / 集成阶段沟通交流记录 / 团队源码归档包；个人 3 份：朱思思 / 宋嘉桐 / 贾文霞 各《集成阶段实训报告》）全部按命名规范提交
 
 ### 11.2 部署与总结阶段（6/21 ddl）
 
 - [ ] 6 组灵敏度实验结果入《系统设计开发总结报告》
-- [ ] 3D 校园（4 食堂建筑 + 入口 + 道路）+ 3D 食堂内部（多楼层 mesh group 堆叠）+ 楼层切换动画 + 2D toggle 全部可演示
+- [ ] 3D 校园（3 食堂建筑 + 入口 + 道路）+ 3D 食堂内部（多楼层 mesh group 堆叠）+ 楼层切换动画 + 2D toggle 全部可演示
 - [ ] 12 份新文档（团队 6 份：部署阶段沟通记录 / 系统部署环境搭建说明 / 团队部署程序包 / 系统使用手册 / 系统设计开发总结报告 / 小组成员贡献度确认表；个人 6 份：每人《部署阶段实训报告》+《课程总结》各一份）全部按命名规范提交
 - [ ] 演示彩排至少 2 轮全员到位
 
@@ -1779,3 +1775,4 @@ flask-cors>=4.0.0
 | v1.3 | 2026-04-28 | 1) 修 4 个实现级 bug：切换食堂时未更新 student.target_canteen_id；ArrivalGenerator 无限循环；avg_eat_time 单位双重转换；seat status 用 "free" 与 Phase 2 "empty" 不兼容。2) 引入多楼层 + 三层视图架构：preset 改用 floors[] 嵌套；Window/Seat 加 floor_id；Canteen.snapshot 同时输出 flat（Phase 2 兼容）+ floors[]（v1.3 新前端用）；前端三层 = 校园地图（SVG/3D）→ 食堂下钻（Canvas/3D）→ 楼层 Tab；新增 campus_map.js / floor_tabs.js；§3.2 preset、§7.1 测试矩阵、§9 时间线、§11 DoD 同步更新；测试目标从 70 条提到 80 条 | 朱思思 |
 | v1.4 | 2026-04-28 | 食堂名单与命名一致性更新：把全文示例食堂从虚构的 xueyi/xueer/xueyuan/siyuan 全部替换为主校区实际 4 食堂 xueyuan / minghu_xueyi / xuehuo / xuesi（display_name 学苑/明湖学一/学活/学四）；同步 §2.1 preset 文件名、§2.8 walking matrix、§3.1 候选清单、§3.2 preset 示例、§4.3 step 响应示例、§5.3 元数据表注释、§6.3 后端 3D 字段示例。§8.2 联调测试报告内容要点把"70+ 单测全绿"改为"不少于 80 条单测全绿"，与 §7.1 / §11.1 测试目标对齐 | 朱思思 |
 | v1.5 | 2026-04-28 | 按最终调研口径将第四个主校区食堂统一命名为 `xuesi` / 学四食堂，去掉此前混用造成的歧义；同步 preset 文件名、walking matrix、step 示例和候选清单 | 朱思思 |
+| v1.6 | 2026-04-28 | 缩小建模范围：去掉学苑食堂，统一 3 食堂契约（明湖学一 / 学活 / 学四）。同步 §0 文档导读、§2.1 preset 文件列表、§2.8 walking matrix 4×4→3×3 + entrance_walk_seconds 4→3、§3.1 候选清单、§3.2 兼容说明、§3.3 调研流程（食堂数 + 步行对数 4 食堂×6 对→3 食堂×3 对）、§3.4 coverage 默认 0.78→0.65（建议范围 0.60-0.70）、§4.3 step 响应示例、§5.3 元数据表注释、§6.1 三层视图描述、§9.1 时间线、§11 DoD（联合跑通 / preset 数 / 3D 校园建筑数）。剩余的"4"全部是其他语义（4 项指标 / 4 个 on_student_* 方法 / 历史 v1.3-v1.4 的 bug 修复列表），不动 | 朱思思 |
