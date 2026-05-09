@@ -108,10 +108,18 @@ backend/
 
 ### 2.3 Canteen 与 Window
 
+> **多楼层支持（v1.3 引入）**：每个食堂可由多个楼层组成，每层有独立的窗口数和座位数（甚至可以一层只有座位、一层只有窗口）。Window 与 Seat 都带 `floor_id` 标记，仿真逻辑仍在 Canteen 级（shortest_window 跨楼层、座位池跨楼层），楼层信息只用于：
+>
+> 1. 数据组织（preset 用 `floors[]` 嵌套定义，比扁平结构直观）
+> 2. 前端渲染分组（集成阶段楼层 Tab、部署阶段 3D 多层建模）
+>
+> 第一版学生不挑楼层就座（打饭后从全 Canteen 共享座位池里随机分配，可能出现"在 1 楼打饭、上 2 楼吃"的现象）。后续如需"同层优先"再扩展。
+
 ```python
 @dataclass
 class Window:
     id: int
+    floor_id: int                            # 楼层标识（v1.3 新增）；前端按此分组渲染
     canteen_avg_serve_time: float            # 由 Canteen 注入，估值用
     resource: simpy.Resource                 # capacity=1，每窗口独立排队
     waiting_students: list["Student"] = field(default_factory=list)
@@ -159,8 +167,16 @@ class Window:
 @dataclass
 class Seat:
     id: int
+    floor_id: int                                # 楼层标识（v1.3 新增）
     student: Optional["Student"] = None
     eat_end_time: float = 0.0  # 绝对时刻；前端按 current_time 算 remaining_time
+
+@dataclass
+class FloorMeta:
+    """每楼层的元数据；不持有仿真资源，仅供 snapshot 输出与 3D 渲染参考。"""
+    floor_id: int
+    layout: dict = field(default_factory=dict)   # {floor_size, window_positions, seat_grid}
+    notes: str = ""
 
 class Canteen:
     def __init__(self, env: simpy.Environment, definition: dict):
@@ -168,39 +184,75 @@ class Canteen:
         self.id = definition["id"]
         self.display_name = definition["display_name"]
         self.campus_position = definition["campus_position"]
-        self.active_window_count = definition["windows"]["active_count"]
-        self.physical_window_count = definition["windows"]["physical_count"]
-        self.avg_serve_time = definition["windows"]["avg_serve_time_seconds"]
-        self.avg_eat_time = definition["avg_eat_time_minutes"] * 60.0  # 转为秒
+        # 单位约定（与 Phase 2 的 sample_serve_time / sample_eat_time 输入对齐）：
+        #   avg_serve_time —— 秒
+        #   avg_eat_time   —— 分钟（Phase 2 sample_eat_time 输入即分钟）
+        self.avg_eat_time = definition["avg_eat_time_minutes"]
         self.arrival_weight = definition["arrival_weight"]
         self.typical_wait_seconds = definition.get("typical_wait_seconds", 120.0)
 
-        # 窗口资源：每窗口独立 Resource，便于按窗口统计
-        self.windows = [
-            Window(
-                id=i,
-                canteen_avg_serve_time=self.avg_serve_time,
-                resource=simpy.Resource(env, capacity=1),
-            )
-            for i in range(self.active_window_count)
-        ]
+        # 楼层数据从 preset["floors"] 展开：每层各自的窗口/座位被 flatten 进
+        # self.windows / self.seats 列表（带 floor_id 标记），SimPy 仿真逻辑
+        # 仍在 Canteen 级（shortest_window 跨楼层、seat_pool 跨楼层）。
+        self.floors_meta: list[FloorMeta] = []
+        self.windows: list[Window] = []
+        self.seats: list[Seat] = []
+        self.physical_window_count: int = 0
+        self.active_window_count: int = 0
 
-        # 座位：物理对象列表
-        self.seats = [Seat(id=i) for i in range(definition["seats"]["count"])]
+        # 服务时长：第一版假设全食堂窗口共享一个均值；如果未来不同楼层不同窗口
+        # 类型有显著差异，可改为 Window 级 avg_serve_time。
+        # preset 里允许全食堂顶层提供 default 值，每层可覆盖。
+        default_serve_time = definition.get("avg_serve_time_seconds")
 
-        # 座位资源池：simpy.Store 负责"谁抢到座位"的调度
+        next_window_id = 0
+        next_seat_id = 0
+        for floor_def in definition["floors"]:
+            fid = floor_def["floor_id"]
+            self.floors_meta.append(FloorMeta(
+                floor_id=fid,
+                layout=floor_def.get("layout", {}),
+                notes=floor_def.get("notes", ""),
+            ))
+            wdef = floor_def.get("windows", {})
+            sdef = floor_def.get("seats", {})
+
+            self.physical_window_count += wdef.get("physical_count", wdef.get("active_count", 0))
+            self.active_window_count += wdef.get("active_count", 0)
+            floor_serve_time = wdef.get("avg_serve_time_seconds", default_serve_time)
+
+            for _ in range(wdef.get("active_count", 0)):
+                self.windows.append(Window(
+                    id=next_window_id,
+                    floor_id=fid,
+                    canteen_avg_serve_time=floor_serve_time,
+                    resource=simpy.Resource(env, capacity=1),
+                ))
+                next_window_id += 1
+
+            for _ in range(sdef.get("count", 0)):
+                self.seats.append(Seat(id=next_seat_id, floor_id=fid))
+                next_seat_id += 1
+
+        # 食堂级"代表性服务时间"：StudentRouter 估值用；取所有窗口加权平均
+        if self.windows:
+            self.avg_serve_time = sum(
+                w.canteen_avg_serve_time for w in self.windows
+            ) / len(self.windows)
+        else:
+            self.avg_serve_time = default_serve_time or 30.0
+
+        # 座位资源池：simpy.Store 负责"谁抢到座位"的调度（跨楼层共享）
         self.seat_pool = simpy.Store(env)
         for s in self.seats:
             self.seat_pool.put(s)
 
         # 等座可视化/统计：与 Window.waiting_students 同模式
-        # SimPy Store.get_queue 里是 GetEvent，不是 Student 对象，
-        # 前端要画"等座队列圆点"必须自己维护学生列表。
         self.seat_waiting_students: list["Student"] = []
 
         # 食堂级累计统计
-        self.total_arrived: int = 0      # 进入本食堂的学生数（含切换进来的）
-        self.total_served: int = 0       # 在本食堂吃完离开的学生数
+        self.total_arrived: int = 0
+        self.total_served: int = 0
 
     def shortest_window(self) -> Window:
         return min(self.windows, key=lambda w: w.queue_load)
@@ -217,52 +269,87 @@ class Canteen:
         return len(self.seat_waiting_students)
 
     def snapshot(self) -> dict:
-        """输出兼容 Phase 2 前端的 windows/seats/students 形状。"""
+        """输出双形状：
+
+        1. flat 字段 `windows[] / seats[] / students[]`：与 Phase 2 完全兼容，
+           现有 drawWindows / drawSeats / drawStudentDots 不用改。
+        2. 嵌套字段 `floors[]`：v1.3 新增；新前端按楼层 Tab 渲染。
+        """
+        flat_windows = [
+            {
+                "id": w.id,
+                "floor_id": w.floor_id,
+                "queue_length": w.queue_length,
+                "is_serving": w.current_serving is not None,
+                "total_served": w.total_served,
+            }
+            for w in self.windows
+        ]
+        flat_seats = [
+            {
+                "id": s.id,
+                "floor_id": s.floor_id,
+                "status": "occupied" if s.student else "empty",
+                "remaining_time": max(0, s.eat_end_time - self.env.now),
+            }
+            for s in self.seats
+        ]
+
         students = []
         for w in self.windows:
             for idx, s in enumerate(w.waiting_students):
                 students.append({
                     "id": s.id, "position": "window_queue",
                     "position_detail": w.id, "queue_index": idx,
+                    "floor_id": w.floor_id,
                 })
             if w.current_serving:
                 students.append({
                     "id": w.current_serving.id, "position": "being_served",
                     "position_detail": w.id,
+                    "floor_id": w.floor_id,
                 })
         for idx, s in enumerate(self.seat_waiting_students):
             students.append({
                 "id": s.id, "position": "waiting_queue", "position_detail": idx,
+                # 等座学生在仿真中不绑定具体楼层；前端可显示在"打饭楼层"
+                # 或"食堂入口"区域，不强制 floor_id。
+                "floor_id": None,
             })
         for seat in self.seats:
             if seat.student:
                 students.append({
                     "id": seat.student.id, "position": "seated",
                     "position_detail": seat.id,
+                    "floor_id": seat.floor_id,
                 })
+
+        # 嵌套形状：按 floor_id 分组
+        floors_block = []
+        for meta in self.floors_meta:
+            fid = meta.floor_id
+            floors_block.append({
+                "floor_id": fid,
+                "layout": meta.layout,
+                "windows": [w for w in flat_windows if w["floor_id"] == fid],
+                "seats": [s for s in flat_seats if s["floor_id"] == fid],
+                "students": [
+                    st for st in students
+                    if st["floor_id"] == fid
+                ],
+            })
+
         return {
             "id": self.id,
             "display_name": self.display_name,
-            "windows": [
-                {
-                    "id": w.id,
-                    "queue_length": w.queue_length,
-                    "is_serving": w.current_serving is not None,
-                    "total_served": w.total_served,
-                }
-                for w in self.windows
-            ],
-            "seats": [
-                {
-                    "id": s.id,
-                    "status": "occupied" if s.student else "free",
-                    "remaining_time": max(0, s.eat_end_time - self.env.now),
-                }
-                for s in self.seats
-            ],
+            "campus_position": self.campus_position,
+            # flat 形状（Phase 2 兼容）
+            "windows": flat_windows,
+            "seats": flat_seats,
             "students": students,
             "waiting_queue_length": self.seat_waiting_count,
-            "campus_position": self.campus_position,
+            # 嵌套形状（v1.3 新增；新前端按楼层 Tab 用）
+            "floors": floors_block,
         }
 ```
 
@@ -343,6 +430,10 @@ def student_lifecycle(env, student, router, canteens, campus, coordinator):
                         queue_phase_total_wait += env.now - wait_start
                         student.switch_count += 1
                         student.state = "switching"
+                        # 必须先更新 target，再 on_student_walking_start。
+                        # in_transit[].to_canteen_id 与 Campus.transit_progress
+                        # 都依赖此字段反映"正在走向哪个食堂"。
+                        student.target_canteen_id = alt.id
                         walk = campus.walking_time(canteen.id, alt.id)
                         coordinator.on_student_walking_start(student)
                         yield env.timeout(walk)
@@ -593,6 +684,7 @@ class StudentRouter:
     "coverage": 0.78,
     "peak_window_minutes": 90,
     "peak_beta": 1.5,
+    "simulation_seconds": 5400,
     "entrance_position": {"x": 0, "y": 0},
     "walking_time_seconds": {
       "xueyi":   {"xueer": 120, "xueyuan": 240, "siyuan": 180},
@@ -607,6 +699,8 @@ class StudentRouter:
   }
 }
 ```
+
+> **`simulation_seconds`（v1.3 新增）**：到达过程截止时间（秒）。`ArrivalGenerator` 在此时间后停止生成新学生，已在仿真中的学生由 SimPy 调度执行完毕。`/api/campus/finish` 依赖此字段才能在有限时间内 drain。缺省值为 `peak_window_minutes * 60`。
 
 **Campus 类**：
 
@@ -709,10 +803,25 @@ class ArrivalGenerator:
         return student
 
     def _run(self):
-        """Poisson 到达过程，每名学生 yield 一个 student_lifecycle 进程。"""
+        """Poisson 到达过程，每名学生 yield 一个 student_lifecycle 进程。
+
+        到达过程到 simulation_seconds 截止后停止生成新学生；
+        已生成的学生会被 SimPy 调度执行完毕，env.run(until=...) 自然 drain。
+        这是 /api/campus/finish 能正确返回最终统计的前提。
+        """
         rate_per_sec = self._compute_arrival_rate_per_minute() / 60.0
-        while True:
+        # 到达截止时间：单位秒。若未在 config 中显式指定，
+        # 默认与午餐高峰窗口一致，即 peak_window_minutes * 60。
+        stop_after = self.config.get(
+            "simulation_seconds",
+            self.config["peak_window_minutes"] * 60.0,
+        )
+        while self.env.now < stop_after:
             interval = self.rng.expovariate(rate_per_sec)
+            if self.env.now + interval >= stop_after:
+                # 下一个到达落在截止后，不再生成
+                yield self.env.timeout(stop_after - self.env.now)
+                return
             yield self.env.timeout(interval)
             student = self._spawn_student()
             self.env.process(student_lifecycle(
@@ -790,33 +899,58 @@ class CampusStats:
 
 ### 3.2 食堂参数预设字段（presets/&lt;canteen_id&gt;.json）
 
+**v1.3 schema：每食堂可由多楼层组成。** `floors[]` 中每层独立配置窗口/座位/布局；学一可能 1 楼打饭 + 2 楼座位，学二可能两层都有窗口。
+
 ```json
 {
   "id": "xueyi",
   "display_name": "学一食堂",
   "campus_position": {"x": 120, "y": 80},
-  "floors": 1,
   "entrances": 2,
-  "windows": {
-    "physical_count": 12,
-    "active_count": 8,
-    "by_type": {"rice": 3, "noodle": 2, "specialty": 3},
-    "avg_serve_time_seconds": 30,
-    "service_time_notes": "测了普通窗 28s/人 与 最慢特色窗 45s/人，加权平均 30s"
-  },
-  "seats": {
-    "count": 240,
-    "layout_hint": "8x30 grid"
-  },
+  "avg_eat_time_minutes": 15,
+  "avg_serve_time_seconds": 30,
+  "arrival_weight": 1.0,
+  "typical_wait_seconds": 300,
+  "observed_peak_queue": 25,
   "peak_hours": [
     {"name": "lunch",  "start": "11:30", "end": "13:00", "intensity": 1.0},
     {"name": "dinner", "start": "17:00", "end": "19:00", "intensity": 0.7}
   ],
-  "avg_eat_time_minutes": 15,
-  "observed_peak_queue": 25,
-  "arrival_weight": 1.0,
-  "typical_wait_seconds": 300,
-  "notes": "二楼座位本次先按一楼建模"
+  "floors": [
+    {
+      "floor_id": 1,
+      "windows": {
+        "physical_count": 12,
+        "active_count": 8,
+        "avg_serve_time_seconds": 30,
+        "by_type": {"rice": 3, "noodle": 2, "specialty": 3},
+        "service_time_notes": "测了普通窗 28s/人 与 最慢特色窗 45s/人，加权平均 30s"
+      },
+      "seats": {
+        "count": 120,
+        "layout_hint": "4x30 grid"
+      },
+      "layout": {
+        "floor_size": [40, 30],
+        "window_positions": [[5, 2], [8, 2], [11, 2], [14, 2], [17, 2], [20, 2], [23, 2], [26, 2]],
+        "seat_grid_origin": [4, 8],
+        "seat_grid_step": [2, 2]
+      },
+      "notes": "一楼为打饭区 + 部分就餐"
+    },
+    {
+      "floor_id": 2,
+      "windows": {"physical_count": 0, "active_count": 0},
+      "seats": {"count": 120, "layout_hint": "8x15 grid"},
+      "layout": {
+        "floor_size": [40, 30],
+        "window_positions": [],
+        "seat_grid_origin": [4, 4],
+        "seat_grid_step": [2, 2]
+      },
+      "notes": "二楼仅就餐区，本次按全部座位建模"
+    }
+  ]
 }
 ```
 
@@ -824,14 +958,16 @@ class CampusStats:
 
 | 字段 | 含义 | 来源 |
 |---|---|---|
-| `windows.physical_count` | 现场可见的窗口总数（数标牌） | 调研记录 |
-| `windows.active_count` | 高峰期实际开放窗口数 | 调研观察；**仿真使用此值** |
-| `windows.avg_serve_time_seconds` | 平均服务时长（秒） | 调研：测 2 组（普通窗 5 人 + 最慢窗 5 人）加权 |
-| `seats.count` | 座位估算总数 | 调研：数 1-2 排乘以排数 |
-| `arrival_weight` | 学生初次选择的相对受欢迎度 | 由组内根据调研观察人流量经验确定，默认 1.0 |
-| `typical_wait_seconds` | "凭印象/口碑"的典型等待时长 | 调研：观察当日中午高峰最长等待估算 |
+| `floors[].floor_id` | 楼层标识（1 = 1F、2 = 2F） | preset 自定义 |
+| `floors[].windows.physical_count` | 现场可见窗口总数 | 调研记录 |
+| `floors[].windows.active_count` | 高峰期实际开放窗口数 | 调研观察；**仿真使用此值** |
+| `floors[].windows.avg_serve_time_seconds` | 该楼层平均服务时长（秒） | 调研：测 2 组加权；不填则用顶层默认 |
+| `floors[].seats.count` | 该楼层座位估算数 | 调研：数 1-2 排 × 排数 |
+| `floors[].layout` | 3D 渲染参考（部署阶段用） | 现场拍照估算 |
+| `arrival_weight` | 学生初次选择的相对受欢迎度 | 由组内据观察人流量经验定，默认 1.0 |
+| `typical_wait_seconds` | "凭印象/口碑"的典型等待时长 | 调研：当日中午高峰最长等待估算 |
 
-进入 Coordinator 时统一转换：`avg_serve_time_seconds → avg_serve_time`（秒）、`avg_eat_time_minutes → avg_eat_time`（秒），与 Phase 2 旧字段语义对齐。
+**单食堂模式向后兼容**：Phase 2 的 6 字段 config 没有 `floors`，由兼容门面在内部包装成"单楼层"结构。新写的 4 食堂 preset 都按 `floors[]` 填。
 
 ### 3.3 实地调研操作流程
 
@@ -1041,16 +1177,28 @@ CREATE TABLE walking_time (
 
 ## 6. 前端架构
 
-### 6.1 集成阶段（保留 Phase 2 Canvas，扩展控制层与 namespace）
+### 6.1 集成阶段三层视图（v1.3 引入）
 
-**最小改动原则**：`drawWindows / drawSeats / drawStudentDots` 三个绘制函数一行不动；运行控制层（轮询循环 / `dispatchStep` / `finish` / `reset` / `loadStatistics`）按 mode 分派。
+校园模式下前端组织成三层（自顶向下）：
+
+| 层 | 视图 | 数据源 | 集成阶段实现 | 部署阶段实现 |
+|---|---|---|---|---|
+| 1 | **校园地图总览** | `/api/campus/step` 整体响应 | SVG 校园缩略图 + 4 食堂热度 + 在路上学生小点 | Three.js 3D 校园场景 |
+| 2 | **食堂下钻视图** | `snapshot.canteens[active_id]` | 现有 Canvas 不动（按 active_floor 过滤 windows/seats/students） | Three.js 3D 食堂内部 |
+| 3 | **楼层 Tab** | `canteen_view.floors[]` | `[1F] [2F]` 按钮，切换 active_floor 触发 Canvas 重绘 | 3D 多层建模，相机切换楼层 |
+
+> 第一层"校园地图"和第三层"楼层 Tab"都是 v1.3 新增的。第二层"食堂内部 Canvas"在 Phase 2 已经存在，集成阶段只需加楼层过滤。
+
+**最小改动原则**：`drawWindows / drawSeats / drawStudentDots` 三个绘制函数一行不动；调用前对 `data.windows / data.seats / data.students` 按 `active_floor_id` 过滤即可。
 
 **文件结构**：
 
 ```
 frontend/static/js/
-├── main.js          # 现有；控制层重构 + 通过 window.CanteenApp 暴露公共面
-├── campus.js        # 新增；校园联合模式适配与渲染（约 200 行）
+├── main.js              # 现有；控制层重构 + 通过 window.CanteenApp 暴露公共面
+├── campus.js            # 新增；校园联合模式适配与渲染（约 220 行）
+├── campus_map.js        # 新增；第 1 层"校园地图总览"SVG 渲染（约 150 行）
+├── floor_tabs.js        # 新增；第 3 层"楼层 Tab"+ floor 过滤（约 80 行）
 └── vendor/
     └── echarts.min.js
 ```
@@ -1063,13 +1211,15 @@ window.CanteenApp = window.CanteenApp || {};
 
 // Phase 2 现有 const state 等声明保留位置不动
 const state = {
-    mode: 'single',          // 由表单决定，submit 时设
+    mode: 'single',           // 由表单决定，submit 时设
+    view: 'canteen',          // 'campus' | 'canteen'  v1.3 新增；校园模式下两层切换
     lastData: null,
     timer: null,
     speed: 2,
     charts: {},
     studentPrev: {},
-    activeCanteenId: null,
+    activeCanteenId: null,    // 当前下钻的食堂
+    activeFloorId: null,      // v1.3 新增：当前楼层 Tab；为 null 表示"全楼层"
     canteenOrder: [],
 };
 
@@ -1105,8 +1255,10 @@ async function dispatchStep() {
 
 | 模块 | 职责 |
 |---|---|
-| `main.js` | mode 分派；`configForm.submit` / 轮询循环（含 `dispatchStep`）/ `endBtn` / `restartBtn` / `loadStatistics` 主流程 |
-| `campus.js` | `pickCanteenView` / `fillCanteenSelect` / `refreshCampusView` / `renderCampusCharts`；不持有控制流 |
+| `main.js` | mode 分派；`configForm.submit` / 轮询循环（含 `dispatchStep`）/ `endBtn` / `restartBtn` / `loadStatistics` 主流程；view 切换（校园 ↔ 食堂） |
+| `campus.js` | 食堂下钻层（第 2 层）：`pickCanteenView` / `fillCanteenSelect` / `refreshCanteenDrilldown` / `updateCampusOverview` / `renderCampusCharts`；不持有控制流 |
+| `campus_map.js` | 校园地图层（第 1 层）：SVG 渲染 4 食堂位置 + 当前人数热度 + 在路上学生小点；点击食堂方块触发 view='canteen' + activeCanteenId |
+| `floor_tabs.js` | 楼层 Tab 层（第 3 层）：根据当前 canteen.floors[] 渲染 `[1F][2F]` 按钮；按 activeFloorId 过滤 windows/seats/students 后调用 drawCanteen |
 
 `campus.js` 关键实现：
 
@@ -1138,20 +1290,47 @@ async function dispatchStep() {
     }
 
     function refreshCampusView(snapshot) {
-        // 兜底：第一帧来时下拉还没初始化
-        if (!App.state.activeCanteenId && snapshot.canteen_order.length > 0) {
-            App.state.activeCanteenId = snapshot.canteen_order[0];
-        }
-        fillCanteenSelect(snapshot.canteen_order, snapshot.canteens);
+        // 第 1 层：校园地图总是更新（无论 view 是 campus 还是 canteen）
+        if (App.renderCampusMap) App.renderCampusMap(snapshot);
 
-        const canteenView = snapshot.canteens[App.state.activeCanteenId];
-        if (!canteenView) {
-            console.warn('activeCanteenId not in snapshot:', App.state.activeCanteenId);
-            return;
+        // 第 2 层：食堂下钻 — 只在 view='canteen' 时刷新
+        if (App.state.view === 'canteen') {
+            // 兜底：第一帧来时还没选食堂
+            if (!App.state.activeCanteenId && snapshot.canteen_order.length > 0) {
+                App.state.activeCanteenId = snapshot.canteen_order[0];
+            }
+            fillCanteenSelect(snapshot.canteen_order, snapshot.canteens);
+
+            const canteenView = snapshot.canteens[App.state.activeCanteenId];
+            if (!canteenView) {
+                console.warn('activeCanteenId not in snapshot:', App.state.activeCanteenId);
+                return;
+            }
+
+            // 第 3 层：楼层 Tab 渲染（如食堂多于 1 层）+ 按 activeFloorId 过滤
+            if (App.renderFloorTabs) App.renderFloorTabs(canteenView);
+            const filteredView = filterByFloor(canteenView, App.state.activeFloorId);
+            App.drawCanteen(filteredView);
+            App.updateInfoPanel(filteredView);
         }
-        App.drawCanteen(canteenView);
-        App.updateInfoPanel(canteenView);
+
+        // 总览面板永远显示校园层数据
         updateCampusOverview(snapshot);
+    }
+
+    function filterByFloor(canteenView, activeFloorId) {
+        if (activeFloorId == null) return canteenView;  // 全楼层显示
+        const floorBlock = (canteenView.floors || [])
+            .find(f => f.floor_id === activeFloorId);
+        if (!floorBlock) return canteenView;
+        // 把 flat 字段替换成对应楼层的内容；waiting_queue_length 仍取 canteen 级
+        // （等座是跨楼层共享池）
+        return {
+            ...canteenView,
+            windows: floorBlock.windows,
+            seats: floorBlock.seats,
+            students: floorBlock.students,
+        };
     }
 
     function updateCampusOverview(snapshot) {
@@ -1175,28 +1354,153 @@ async function dispatchStep() {
 })();
 ```
 
+**`campus_map.js` 关键实现（第 1 层）**：
+
+```javascript
+(function() {
+    const App = window.CanteenApp;
+    let svgInited = false;
+
+    function initSvg(canteens) {
+        const svg = document.getElementById('campus-map-svg');
+        // 设置 viewBox 跟 campus_position 坐标系对齐
+        svg.setAttribute('viewBox', '-50 -50 500 400');
+        for (const cid in canteens) {
+            const c = canteens[cid];
+            const g = createSvgEl('g', {class: 'canteen-marker', 'data-cid': cid});
+            const rect = createSvgEl('rect', {
+                x: c.campus_position.x - 25, y: c.campus_position.y - 25,
+                width: 50, height: 50, rx: 6,
+            });
+            const label = createSvgEl('text', {
+                x: c.campus_position.x, y: c.campus_position.y + 5,
+                'text-anchor': 'middle',
+            });
+            label.textContent = c.display_name;
+            g.appendChild(rect);
+            g.appendChild(label);
+            g.addEventListener('click', () => {
+                App.state.view = 'canteen';
+                App.state.activeCanteenId = cid;
+                App.state.activeFloorId = null;  // 进入新食堂默认全楼层
+                if (App.state.lastData) App.refreshCampusView(App.state.lastData);
+            });
+            svg.appendChild(g);
+        }
+        svgInited = true;
+    }
+
+    function renderCampusMap(snapshot) {
+        if (!svgInited) initSvg(snapshot.canteens);
+        // 按当前队伍长度更新热度颜色
+        for (const cid in snapshot.canteens) {
+            const c = snapshot.canteens[cid];
+            const totalQueue = c.windows.reduce((sum, w) => sum + w.queue_length, 0)
+                              + c.waiting_queue_length;
+            const intensity = Math.min(1, totalQueue / 50);
+            const color = `rgb(${239}, ${Math.floor(120 - 60 * intensity)}, 68)`;
+            const rect = document.querySelector(
+                `.canteen-marker[data-cid="${cid}"] rect`
+            );
+            if (rect) rect.setAttribute('fill', color);
+        }
+        // 在路上学生小点
+        renderInTransitDots(snapshot);
+    }
+
+    App.renderCampusMap = renderCampusMap;
+})();
+```
+
+**`floor_tabs.js` 关键实现（第 3 层）**：
+
+```javascript
+(function() {
+    const App = window.CanteenApp;
+    let lastFloorKeyByCanteen = {};  // 防止每帧重建
+
+    function renderFloorTabs(canteenView) {
+        const container = document.getElementById('floor-tabs');
+        const floors = canteenView.floors || [];
+        if (floors.length <= 1) {
+            container.innerHTML = '';            // 单层食堂不显示 Tab
+            App.state.activeFloorId = null;
+            return;
+        }
+        const floorKey = floors.map(f => f.floor_id).join(',');
+        if (lastFloorKeyByCanteen[canteenView.id] === floorKey) return;
+        lastFloorKeyByCanteen[canteenView.id] = floorKey;
+
+        container.innerHTML = '';
+        // "全楼层"按钮
+        container.appendChild(makeTab(null, '全楼层'));
+        for (const f of floors) {
+            container.appendChild(makeTab(f.floor_id, `${f.floor_id}F`));
+        }
+        // 默认选中全楼层
+        if (App.state.activeFloorId == null) {
+            container.querySelector('[data-floor="all"]').classList.add('active');
+        }
+    }
+
+    function makeTab(floorId, label) {
+        const btn = document.createElement('button');
+        btn.dataset.floor = floorId == null ? 'all' : floorId;
+        btn.textContent = label;
+        btn.addEventListener('click', () => {
+            App.state.activeFloorId = floorId;
+            // 立即重画当前食堂下钻视图
+            document.querySelectorAll('#floor-tabs button')
+                .forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            if (App.state.lastData) App.refreshCampusView(App.state.lastData);
+        });
+        return btn;
+    }
+
+    App.renderFloorTabs = renderFloorTabs;
+})();
+```
+
 **index.html 增量**：
 - 参数配置页：运行模式 radio + 单食堂表单 / 校园表单切换
-- 仿真运行页：校园总览面板（campus 模式 visible）+ 食堂切换 dropdown（campus 模式 visible）
+- 仿真运行页：
+  - 校园模式头部："校园 / 食堂"两层视图切换 toggle
+  - 校园层：`<svg id="campus-map-svg">` + 总览面板
+  - 食堂层：食堂切换 dropdown + `<div id="floor-tabs">` + 现有 Canvas + info-panel
 - 数据分析页：Tab 切换（总览 / 单食堂 / 切换分析）
 - 历史记录页：mode 列
 
-**集成阶段宋嘉桐工作量**：约 420 行（main.js 控制层 ~80 行 + campus.js ~200 行 + index.html ~80 行 + style.css ~60 行）。
+**集成阶段宋嘉桐工作量（v1.3 修订）**：约 700 行
+- main.js 控制层重构 ~80 行
+- campus.js 食堂下钻层 ~220 行（含 filterByFloor）
+- campus_map.js 校园地图层 ~150 行
+- floor_tabs.js 楼层 Tab 层 ~80 行
+- index.html 增量 ~100 行（含 SVG 框 + 视图切换）
+- style.css 增量 ~80 行（地图标记 / 楼层 Tab 样式）
 
-### 6.2 部署阶段：Three.js 3D 化
+### 6.2 部署阶段：Three.js 3D 化（多楼层）
 
 新增 `frontend/static/js/three/` 目录：
 
 ```
 three/
-├── scene.js           # THREE.Scene 初始化、相机、灯光、resize
-├── campus_view.js     # 校园 3D 场景（地面 + N 个食堂建筑 + 入口）
-├── canteen_view.js    # 食堂内部 3D（窗口柜台 + 座位区 + 学生）
-├── student_render.js  # 学生 3D 模型 + 帧间插值（沿用 Phase 2 lerp）
-├── transition.js      # 校园 → 食堂 缩放穿越动画
+├── scene.js              # THREE.Scene 初始化、相机、灯光、resize
+├── campus_view.js        # 第 1 层：校园 3D 场景（地面 + N 个食堂建筑 + 入口 + 道路）
+├── canteen_view.js       # 第 2+3 层合并：食堂内部 3D（按楼层分组的 mesh group）
+├── student_render.js     # 学生 3D 模型 + 帧间插值（InstancedMesh）
+├── transition.js         # 校园 → 食堂、楼层 ↔ 楼层 缩放穿越动画
 └── vendor/
-    └── three.min.js   # Three.js r155+，离线 vendor
+    └── three.min.js      # Three.js r155+，离线 vendor
 ```
+
+**多楼层 3D 渲染策略**：
+- 每个 Canteen 在 `canteen_view.js` 里建一个根 `Group`，下面挂 `floors[i]` 子 `Group`
+- 楼层间用 Y 轴堆叠（1F y=0，2F y=4，3F y=8，每层 4 米高度）
+- 集成阶段同样的 `state.activeFloorId` 状态：
+  - `null` → 全楼层可见，相机鸟瞰整栋建筑
+  - `1` / `2` → 高亮该层，其余层降低透明度（`material.opacity = 0.2`）+ 相机锁定到该层高度
+- 楼层间切换走 `transition.js` 做相机平滑插值动画
 
 **视觉风格**：low-poly 几何方块（BoxGeometry / CylinderGeometry / CapsuleGeometry），不依赖外部 glTF 资产，控制开发与渲染成本。
 
@@ -1223,22 +1527,40 @@ three/
 
 `Canteen.snapshot()` 在 Phase 2 兼容形状基础上额外增加：
 
+- 顶层：`campus_position: {x, y}`（食堂在校园中的位置）
+- 嵌套：`floors[]` 数组（每楼层独立 layout）
+
 ```json
 {
+  "id": "xueyi",
+  "display_name": "学一食堂",
   "campus_position": {"x": 120, "y": 80},
-  "layout": {
-    "floor_size": [40, 30],
-    "window_positions": [[5, 2], [8, 2]],
-    "seat_grid": [[10, 10], [12, 10]]
-  }
+  "windows": [...],
+  "seats": [...],
+  "students": [...],
+  "floors": [
+    {
+      "floor_id": 1,
+      "layout": {
+        "floor_size": [40, 30],
+        "window_positions": [[5, 2], [8, 2]],
+        "seat_grid_origin": [4, 8],
+        "seat_grid_step": [2, 2]
+      },
+      "windows": [...],
+      "seats": [...],
+      "students": [...]
+    },
+    {"floor_id": 2, "layout": {...}, "windows": [...], "seats": [...], "students": [...]}
+  ]
 }
 ```
 
-`layout` 由调研时填进 preset，作为 3D 场景生成依据。
+`floors[].layout` 由调研时填进 preset，作为 3D 场景生成依据。每楼层 layout 独立，能反映"1 楼大堂排窗 + 2 楼座位区"这种异构布局。
 
-### 6.4 部署阶段宋嘉桐工作量
+### 6.4 部署阶段宋嘉桐工作量（v1.3 修订）
 
-约 800 行 Three.js 代码（5 个 three/ 模块），4 周完成（含模型搭建、动画调试、性能优化、演示打磨）。
+约 1000 行 Three.js 代码（5 个 three/ 模块，含多楼层支持），4 周完成（含模型搭建、楼层堆叠动画、性能优化、演示打磨）。
 
 ---
 
@@ -1249,20 +1571,25 @@ three/
 | 测试组 | 用例数（约） | 覆盖内容 |
 |---|---:|---|
 | Phase 2 兼容回归测试组（不重命名、不迁移） | 39 | 现有 `test_api.py / test_engine.py / test_dining_sim.py / test_queue_sim.py`；通过 `SimulationEngine` 兼容门面跑 |
-| `test_simpy_canteen.py` | 6 | Canteen 单实例：windows 资源 / seats Store / shortest_window / snapshot 形状 / total_arrived / total_served |
-| `test_window.py` | 4 | join_queue / leave_queue / leave_queue_idempotent / estimated_wait_for（含 current_serving） |
+| `test_simpy_canteen.py` | 7 | Canteen 单实例：windows 资源 / seats Store / shortest_window / snapshot 形状 / total_arrived / total_served / floors[] 展开正确 |
+| `test_window.py` | 5 | join_queue / leave_queue / leave_queue_idempotent / estimated_wait_for（含 current_serving）/ floor_id 字段保留 |
 | `test_router.py` | 8 | pick_initial 分布 / no_switch_when_close / switch_when_clearly_better / oscillation_prevented / max_switches_capped / walk_time_in_decision / uses_current_window / live_congestion_mode |
-| `test_coordinator.py` | 6 | 校园协调器：单 / 联合模式启停 / 时钟一致性 / canteens dict 形状 / snapshot 含 campus_totals / total_in_queue 含等座 |
+| `test_coordinator.py` | 7 | 校园协调器：单 / 联合模式启停 / 时钟一致性 / canteens dict 形状 / snapshot 含 campus_totals / total_in_queue 含等座 / target_canteen_id 切换时更新 |
 | `test_campus_api.py` | 5 | `/api/campus/config` `/start` `/step` `/finish` `/status` |
+| `test_arrival_generator.py` | 3 | Poisson 间隔分布 / simulation_seconds 截止后停止 / 已生成学生能 drain |
 | `test_db_migration.py` | 3 | ALTER 后旧 `simulation_config` 仍可读 / `campus_snapshot` 新表 / 旧 `/api/history` 仍能查单食堂数据 |
-| **集成阶段目标** | **不少于 70 条** | |
+| `test_multi_floor.py` | 4 | 多楼层 preset 加载 / Window 与 Seat 带正确 floor_id / snapshot.floors[] 与 flat 字段一致 / 单层食堂 floors[] 长度为 1 |
+| **集成阶段目标** | **不少于 80 条** | |
 
 ### 7.2 关键回归用例
 
 - `test_engine_compat_total_arrived_zero_right_after_start`（Phase 2 已有，回归保留）
 - `test_engine_compat_seat_remaining_time_decreases`（Phase 2 已有，回归保留）
+- `test_engine_compat_seat_status_uses_empty`（新增；防止 v1.3 之前的 "free" 回归）
 - `test_simpy_canteen_snapshot_shape_matches_phase2`（新增；新引擎输出形状必须与 Phase 2 单测期望一致）
 - `test_canteen_leave_seat_queue_idempotent`（新增）
+- `test_lifecycle_target_canteen_id_updates_on_switch`（新增；防止 v1.3 修过的 bug 1 回归）
+- `test_arrival_generator_drains_after_simulation_seconds`（新增；防止 v1.3 修过的 bug 2 回归）
 
 ### 7.3 可复现性
 
@@ -1346,9 +1673,9 @@ three/
 |---|---|---|---|---|
 | 第 9 周 | 4/28-5/3 | 多食堂联合仿真方案设计、技术路线论证、接口草案与调研计划制定 + Phase 2 收尾打包 | 现有 main.js 抽 namespace 准备工作 | 协助调研规划 + Phase 2 文档收尾 |
 | 第 9 周末 | 5/3 | **Phase 2 开发阶段交付（任务书 ddl）** | 同 | 同 |
-| 第 10 周 | 5/4-5/10 | 实地调研 4 食堂（5/4-5/5 周一二中午高峰）+ SimPy 重构 `engine.py` 兼容门面骨架 | `main.js` 控制层重构（namespace + dispatchStep） | 调研数据回填 `presets/*.json` |
-| 第 11 周 | 5/11-5/17 | `canteen.py / student.py / router.py / coordinator.py / campus_routes.py` 主体 + DB 迁移 | `campus.js` 主体 + index.html 表单/Tab + style.css | 跑参数标定 / 文献查 α 值 / 校园总览图设计 |
-| 第 12 周 | 5/18-5/22 | 单测全部铺开（约 70 条），跑通联调 | 校园 ECharts 对比图 + Tab 切换 + 联调 | 联调测试报告草稿 + 沟通记录 |
+| 第 10 周 | 5/4-5/10 | 实地调研 4 食堂（5/4-5/5 周一二中午高峰，**记录每食堂楼层数与各楼层窗口/座位数**）+ SimPy 重构 `engine.py` 兼容门面骨架 | `main.js` 控制层重构（namespace + dispatchStep + view/activeFloorId 状态） | 调研数据回填 `presets/*.json`（**按 floors[] 嵌套结构填**） |
+| 第 11 周 | 5/11-5/17 | `canteen.py`（含多楼层展开）/ `student.py / router.py / coordinator.py / arrival_generator.py / campus.py / stats.py / campus_routes.py` + DB 迁移 | `campus.js` 食堂下钻 + `campus_map.js` SVG 校园地图 + `floor_tabs.js` 楼层 Tab + index.html 三层视图框架 + style.css | 跑参数标定 / 文献查 α 值 / 校园地图坐标系敲定 |
+| 第 12 周 | 5/18-5/22 | 单测全部铺开（约 80 条），跑通联调 | 校园 ECharts 对比图 + Tab 切换 + 联调 + 楼层切换交互 | 联调测试报告草稿 + 沟通记录 |
 | 第 12 周末 | 5/23 | 全队跑过验收 demo（单食堂 / 校园 双模式） | 同 | 同 |
 | 第 12 周末 | 5/24 | 6 份集成阶段交付物提交 | 同 | 同 |
 
@@ -1356,7 +1683,7 @@ three/
 
 | 周次 | 日期 | 朱思思 | 宋嘉桐 | 贾文霞 |
 |---|---|---|---|---|
-| 第 13 周 | 5/25-5/31 | 6 组灵敏度实验 + 总结报告技术章节 | Three.js scene / canteen_view / 3D 模型搭建 | 灵敏度结果统计图 + 参数章节 |
+| 第 13 周 | 5/25-5/31 | 6 组灵敏度实验 + 总结报告技术章节 | Three.js scene / canteen_view（多楼层 mesh group 堆叠）/ campus_view 3D 校园 | 灵敏度结果统计图 + 参数章节 |
 | 第 14 周 | 6/1-6/7 | API 性能调优（campus step 推进时间片优化） | student_render（InstancedMesh）+ transition 动画 | 部署环境说明 |
 | 第 15 周 | 6/8-6/14 | 帮 demo 排练 + 写《课程总结》 | 2D/3D toggle + 第一人称漫游 + 性能降级 | 系统使用手册 + 截图 |
 | 第 16 周 | 6/15-6/20 | 全队 demo 彩排 ×2 + 问题修复 | 同 | 同 |
@@ -1395,16 +1722,17 @@ three/
 
 ### 11.1 集成阶段（5/24 ddl）
 
-- [ ] 单测目标不少于 70 条（Phase 2 兼容回归 39 条 + 新增约 30 条）全部通过
-- [ ] 单食堂模式与 Phase 2 行为完全一致（手测 + 自动回归）
+- [ ] 单测目标不少于 80 条（Phase 2 兼容回归 39 条 + 新增约 42 条，含 multi-floor / arrival_generator / 4 个 v1.3 bug 回归）全部通过
+- [ ] 单食堂模式与 Phase 2 行为完全一致（手测 + 自动回归；含 seat status="empty" / total_arrived 等关键字段）
 - [ ] 校园模式：4 食堂联合跑通、能切换、能下钻、有跨食堂学生迁移现象
-- [ ] 4 个 BJTU 食堂 preset 含真实调研数据
+- [ ] 三层视图全部可用：校园地图（SVG，4 食堂热度 + 在路上学生）→ 食堂下钻（Canvas）→ 楼层 Tab（多层食堂可切换楼层）
+- [ ] 4 个 BJTU 食堂 preset 含真实调研数据，**多层食堂的 floors[] 结构填齐每层窗口/座位/layout**
 - [ ] 6 份新文档（团队 3 份：联调测试报告 / 集成阶段沟通交流记录 / 团队源码归档包；个人 3 份：朱思思 / 宋嘉桐 / 贾文霞 各《集成阶段实训报告》）全部按命名规范提交
 
 ### 11.2 部署与总结阶段（6/21 ddl）
 
 - [ ] 6 组灵敏度实验结果入《系统设计开发总结报告》
-- [ ] 3D 校园 + 3D 食堂内部 + 2D toggle 全部可演示
+- [ ] 3D 校园（4 食堂建筑 + 入口 + 道路）+ 3D 食堂内部（多楼层 mesh group 堆叠）+ 楼层切换动画 + 2D toggle 全部可演示
 - [ ] 12 份新文档（团队 6 份：部署阶段沟通记录 / 系统部署环境搭建说明 / 团队部署程序包 / 系统使用手册 / 系统设计开发总结报告 / 小组成员贡献度确认表；个人 6 份：每人《部署阶段实训报告》+《课程总结》各一份）全部按命名规范提交
 - [ ] 演示彩排至少 2 轮全员到位
 
@@ -1446,3 +1774,4 @@ flask-cors>=4.0.0
 | v1.0 | 2026-04-28 | 初稿：完成多食堂扩展 + 沉浸式可视化的总体方案设计、模块边界、接口草案、测试矩阵、时间线 | 朱思思 |
 | v1.1 | 2026-04-28 | 内部交叉评审反馈修订：补充 Campus（§2.8）/ ArrivalGenerator（§2.9）/ CampusStats（§2.10）三个原本被引用但未定义的辅助类；补 transit_students 在 lifecycle 中的 walking_start / walking_end 钩子；明确 RouterConfig 由 dict 转 dataclass；补 stats.record_wait / record_completion 接入点；澄清 sum(canteen.total_arrived) 与 coordinator.total_arrived 的两类差异；删除 §2.5 一处空操作语句；§6.1 措辞从 "tick" 改为 "轮询循环 / dispatchStep" | 朱思思 |
 | v1.2 | 2026-04-28 | 收尾建议：§4.3 显式说明 `in_transit[].from_canteen_id == null` 表示从校园入口出发；§2.9 注释 peak_beta 字段为 §10 灵敏度实验保留，不参与 _compute_arrival_rate_per_minute；将 avg_walk_time / switch_rate 暴露到 campus_totals，给 §10 灵敏度表提供 avg_extra_walk / switch_rate 列数据来源 | 朱思思 |
+| v1.3 | 2026-04-28 | 1) 修 4 个实现级 bug：切换食堂时未更新 student.target_canteen_id；ArrivalGenerator 无限循环；avg_eat_time 单位双重转换；seat status 用 "free" 与 Phase 2 "empty" 不兼容。2) 引入多楼层 + 三层视图架构：preset 改用 floors[] 嵌套；Window/Seat 加 floor_id；Canteen.snapshot 同时输出 flat（Phase 2 兼容）+ floors[]（v1.3 新前端用）；前端三层 = 校园地图（SVG/3D）→ 食堂下钻（Canvas/3D）→ 楼层 Tab；新增 campus_map.js / floor_tabs.js；§3.2 preset、§7.1 测试矩阵、§9 时间线、§11 DoD 同步更新；测试目标从 70 条提到 80 条 | 朱思思 |
