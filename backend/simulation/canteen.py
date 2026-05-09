@@ -129,8 +129,8 @@ class Canteen:
                 w.canteen_avg_serve_time for w in self.windows
             ) / len(self.windows)
         else:
-            # 默认估值（秒）：当 preset 既没顶层 avg_serve_time_seconds、
-            # 也没任何楼层级值时使用；30 秒是高校食堂窗口服务时长的常见经验值。
+            # 30 秒是调研缺失时的保守默认服务时长（秒）：仅当 preset 既没顶层
+            # avg_serve_time_seconds、也没任何楼层级值时回退到此默认值。
             self.avg_serve_time = default_serve_time or 30.0
 
         # 座位资源池：simpy.Store 负责"谁抢到座位"的调度（跨楼层共享）
@@ -145,11 +145,14 @@ class Canteen:
         self.total_arrived: int = 0
         self.total_served: int = 0
 
-        # v1.3 robustness：防 shortest_window() 在空窗口列表上崩
-        assert self.active_window_count > 0, (
-            f"Canteen {self.id!r} 必须至少有 1 个 active 窗口；"
-            f"preset 配置错误或所有楼层 active_count 都为 0"
-        )
+        # v1.3 robustness：防 shortest_window() 在空窗口列表上崩。
+        # 用 raise ValueError 而非 assert，避免 python -O 关掉断言时绕过此校验，
+        # 也用更精确的异常类：active_window_count <= 0 是输入配置错。
+        if self.active_window_count <= 0:
+            raise ValueError(
+                f"Canteen {self.id!r} must have at least one active window; "
+                f"preset 配置错误或所有楼层 active_count 都为 0"
+            )
 
     def shortest_window(self) -> Window:
         return min(self.windows, key=lambda w: w.queue_load)
@@ -166,7 +169,13 @@ class Canteen:
         return len(self.seat_waiting_students)
 
     def snapshot(self) -> dict:
-        """输出双形状：flat（Phase 2 兼容）+ 嵌套 floors[]（v1.3 新前端用）。"""
+        """输出双形状：flat（Phase 2 兼容）+ 嵌套 floors[]（v1.3 新前端用）。
+
+        ``floors[].windows / seats / students`` 是对 flat 字段按 ``floor_id``
+        的分区：每个 Window/Seat 在 ``__init__`` 时被赋了整数 ``floor_id``，
+        分别归入对应楼层；学生中"等座"状态因不绑定楼层用 ``floor_id=None``，
+        因此除等座学生外，flat 与 ``sum(floors[].*)`` 形成完整分区，不应丢失或重复。
+        """
         flat_windows = [
             {
                 "id": w.id,

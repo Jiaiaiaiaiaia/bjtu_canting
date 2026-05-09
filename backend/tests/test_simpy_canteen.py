@@ -117,5 +117,5 @@ def test_canteen_init_rejects_zero_active_windows():
         "arrival_weight": 1.0, "typical_wait_seconds": 120,
         "floors": [{"floor_id": 1, "windows": {"physical_count": 5, "active_count": 0}, "seats": {"count": 30}}],
     }
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError, match="active window"):
         Canteen(env, bad_def)
