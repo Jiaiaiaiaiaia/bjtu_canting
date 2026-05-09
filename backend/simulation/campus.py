@@ -16,9 +16,11 @@ class Campus:
         self.config = campus_config
         self.canteens = canteens
         self.entrance_pos = campus_config["entrance_position"]
-        self.walking_speed = campus_config.get("walking_speed_mps", 1.4)
+        self.walking_speed = campus_config.get("walking_speed_mps", 1.4)  # 1.4 m/s ≈ 普通步行速度
         self._matrix = campus_config.get("walking_time_seconds", {})
         self._entrance_walks = campus_config.get("entrance_walk_seconds", {})
+        if self.walking_speed <= 0:
+            raise ValueError("walking_speed_mps must be positive")
 
     def walking_time_from_entrance(self, canteen_id: str) -> float:
         """学生从校园入口走到指定食堂的时间（秒）。
@@ -59,11 +61,13 @@ class Campus:
             return 0.0
         from_id = student.current_canteen_id
         to_id = student.target_canteen_id
+        if to_id is None:
+            raise ValueError("target_canteen_id is required while walking")
         if from_id is None:
             total = self.walking_time_from_entrance(to_id)
         else:
             total = self.walking_time(from_id, to_id)
         if total <= 0:
-            return 1.0
+            return 1.0  # 零耗时路径视为已到达
         elapsed = now - student.walking_start_time
         return max(0.0, min(1.0, elapsed / total))

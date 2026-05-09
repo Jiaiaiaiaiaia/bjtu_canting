@@ -2,6 +2,7 @@
 
 3 食堂契约（v1.6）：fixture 只用 minghu_xueyi / xuehuo / xuesi。
 """
+import pytest
 import simpy
 
 from simulation.campus import Campus
@@ -79,3 +80,75 @@ def test_transit_progress_zero_when_not_walking():
     campus = Campus(cfg, canteens)
     s = Student(id=1, state="walking", walking_start_time=0)
     assert campus.transit_progress(s, now=0) == 0.0
+
+
+def test_walking_time_from_entrance_uses_table_first():
+    """matrix 命中时优先用预设值，不走欧氏。"""
+    env = simpy.Environment()
+    canteens = make_canteens(env)
+    cfg = {"entrance_position": {"x": 0, "y": 0}, "walking_speed_mps": 1.4,
+           "walking_time_seconds": {},
+           "entrance_walk_seconds": {"minghu_xueyi": 88}}
+    campus = Campus(cfg, canteens)
+    assert campus.walking_time_from_entrance("minghu_xueyi") == 88
+
+
+def test_walking_time_from_entrance_falls_back_to_euclidean():
+    """matrix 缺失时按欧氏距离 / walking_speed_mps 估算。
+    minghu_xueyi 在 (0, 0)，入口 (0, 0)，距离 0；
+    用 xuehuo 在 (100, 0) 测：100 / 1.4 ≈ 71.4 秒。"""
+    env = simpy.Environment()
+    canteens = make_canteens(env)
+    cfg = {"entrance_position": {"x": 0, "y": 0}, "walking_speed_mps": 1.4,
+           "walking_time_seconds": {},
+           "entrance_walk_seconds": {}}
+    campus = Campus(cfg, canteens)
+    expected = 100 / 1.4
+    assert abs(campus.walking_time_from_entrance("xuehuo") - expected) < 0.01
+
+
+def test_transit_progress_active_during_walk():
+    """学生走路 30 秒、总路径 60 秒 → progress = 0.5。"""
+    env = simpy.Environment()
+    canteens = make_canteens(env)
+    cfg = {"entrance_position": {"x": 0, "y": 0}, "walking_speed_mps": 1.4,
+           "walking_time_seconds": {"minghu_xueyi": {"xuehuo": 60}},
+           "entrance_walk_seconds": {}}
+    campus = Campus(cfg, canteens)
+    s = Student(
+        id=1, state="walking",
+        current_canteen_id="minghu_xueyi",
+        target_canteen_id="xuehuo",
+        walking_start_time=100.0,
+    )
+    # 100 + 30 = 130 时已走完一半
+    assert abs(campus.transit_progress(s, now=130.0) - 0.5) < 0.001
+
+
+def test_init_rejects_zero_or_negative_walking_speed():
+    """v1.6 hardening：walking_speed_mps <= 0 必须 raise ValueError，
+    不要等到 walking_time / from_entrance 调用时 div by zero。"""
+    env = simpy.Environment()
+    canteens = make_canteens(env)
+    cfg = {"entrance_position": {"x": 0, "y": 0}, "walking_speed_mps": 0,
+           "walking_time_seconds": {}, "entrance_walk_seconds": {}}
+    with pytest.raises(ValueError, match="walking_speed_mps must be positive"):
+        Campus(cfg, canteens)
+
+
+def test_transit_progress_rejects_walking_without_target():
+    """v1.6 hardening：walking_start_time > 0 但 target_canteen_id is None 是
+    上游逻辑 bug，应在 Campus 层显式 raise，便于定位。"""
+    env = simpy.Environment()
+    canteens = make_canteens(env)
+    cfg = {"entrance_position": {"x": 0, "y": 0}, "walking_speed_mps": 1.4,
+           "walking_time_seconds": {}, "entrance_walk_seconds": {}}
+    campus = Campus(cfg, canteens)
+    s = Student(
+        id=1, state="walking",
+        current_canteen_id="minghu_xueyi",
+        target_canteen_id=None,        # 故意制造的违约
+        walking_start_time=10.0,
+    )
+    with pytest.raises(ValueError, match="target_canteen_id is required"):
+        campus.transit_progress(s, now=20.0)
