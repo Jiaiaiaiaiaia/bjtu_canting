@@ -156,3 +156,81 @@ class Canteen:
     @property
     def seat_waiting_count(self) -> int:
         return len(self.seat_waiting_students)
+
+    def snapshot(self) -> dict:
+        """输出双形状：flat（Phase 2 兼容）+ 嵌套 floors[]（v1.3 新前端用）。"""
+        flat_windows = [
+            {
+                "id": w.id,
+                "floor_id": w.floor_id,
+                "queue_length": w.queue_length,
+                "is_serving": w.current_serving is not None,
+                "total_served": w.total_served,
+            }
+            for w in self.windows
+        ]
+        flat_seats = [
+            {
+                "id": s.id,
+                "floor_id": s.floor_id,
+                # status 沿用 Phase 2 语义："occupied" / "empty"，不要写 "free"
+                "status": "occupied" if s.student else "empty",
+                "remaining_time": max(0, s.eat_end_time - self.env.now),
+            }
+            for s in self.seats
+        ]
+
+        students = []
+        for w in self.windows:
+            for idx, s in enumerate(w.waiting_students):
+                students.append({
+                    "id": s.id, "position": "window_queue",
+                    "position_detail": w.id, "queue_index": idx,
+                    "floor_id": w.floor_id,
+                })
+            if w.current_serving:
+                students.append({
+                    "id": w.current_serving.id, "position": "being_served",
+                    "position_detail": w.id,
+                    "floor_id": w.floor_id,
+                })
+        for idx, s in enumerate(self.seat_waiting_students):
+            students.append({
+                "id": s.id, "position": "waiting_queue", "position_detail": idx,
+                "floor_id": None,   # 等座学生不绑定具体楼层
+            })
+        for seat in self.seats:
+            if seat.student:
+                students.append({
+                    "id": seat.student.id, "position": "seated",
+                    "position_detail": seat.id,
+                    "floor_id": seat.floor_id,
+                })
+
+        # 嵌套形状：按 floor_id 分组
+        floors_block = []
+        for meta in self.floors_meta:
+            fid = meta.floor_id
+            floors_block.append({
+                "floor_id": fid,
+                "layout": meta.layout,
+                "windows": [w for w in flat_windows if w["floor_id"] == fid],
+                "seats": [s for s in flat_seats if s["floor_id"] == fid],
+                "students": [
+                    st for st in students
+                    if st["floor_id"] == fid
+                ],
+            })
+
+        return {
+            "id": self.id,
+            "display_name": self.display_name,
+            "campus_position": self.campus_position,
+            # flat 形状（Phase 2 兼容）
+            "windows": flat_windows,
+            "seats": flat_seats,
+            "students": students,
+            "waiting_queue_length": self.seat_waiting_count,
+            # 嵌套形状（v1.3 新增；新前端按楼层 Tab 用）
+            "floors": floors_block,
+        }
