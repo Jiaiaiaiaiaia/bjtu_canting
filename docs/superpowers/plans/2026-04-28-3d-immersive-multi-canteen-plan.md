@@ -250,12 +250,7 @@ test_canteen_total_served_increments_correctly      # 学生离开时累加
 test_canteen_avg_eat_time_in_minutes_not_seconds    # v1.3 bug 3 回归
 ```
 
-加 v1.3 bug 4 回归到一个独立测试：
-```python
-def test_canteen_seat_status_uses_empty_not_free():
-    # snapshot.seats[i].status 必须是 'empty'，不能是 'free'
-    ...
-```
+v1.3 bug 4（seat status 'empty' 而非 'free'）的回归测试 `test_engine_compat_seat_status_uses_empty` 按 spec §7.2 归入 Phase 2 兼容回归测试组，**不**重复写入 test_simpy_canteen.py。
 
 具体实现细节（make_def helper、断言代码）参考 spec §2.3 的 Canteen 完整代码与 §7.1 / §7.2 测试矩阵。
 
@@ -604,7 +599,7 @@ A.8 完成后：
 - 删 drain 测试的 `@pytest.mark.skip`
 - 跑 `python -m pytest tests/test_arrival_generator.py -v`，期望 3 passed
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add backend/simulation/arrival_generator.py backend/tests/test_arrival_generator.py
