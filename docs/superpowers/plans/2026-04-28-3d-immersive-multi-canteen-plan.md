@@ -235,84 +235,53 @@ git commit -m "feat(simulation): Window/Seat/Student/FloorMeta dataclass"
 
 参考 spec §2.3 Canteen 完整定义。
 
-- [ ] **Step 1: 写失败测试**
+- [ ] **Step 1: 写 test_simpy_canteen.py 全部 7 条（按 spec §7.1）**
+
+测试用例名（含 v1.3 bug 回归）：
 
 ```python
-# backend/tests/test_simpy_canteen.py
-import simpy, pytest
-from simulation.canteen import Canteen
-
-def make_def(floors):
-    return {
-        "id": "test",
-        "display_name": "测试",
-        "campus_position": {"x": 0, "y": 0},
-        "avg_serve_time_seconds": 30,
-        "avg_eat_time_minutes": 15,
-        "arrival_weight": 1.0,
-        "typical_wait_seconds": 120,
-        "floors": floors,
-    }
-
-def test_canteen_avg_eat_time_in_minutes_not_seconds():
-    """v1.3 bug 3 回归：preset 里 avg_eat_time_minutes=15，
-    Canteen.avg_eat_time 应该等于 15，不能被 *60 变成 900。"""
-    env = simpy.Environment()
-    c = Canteen(env, make_def([
-        {"floor_id": 1, "windows": {"physical_count": 4, "active_count": 4}, "seats": {"count": 30}}
-    ]))
-    assert c.avg_eat_time == 15
-
-def test_canteen_seat_status_uses_empty_not_free():
-    """v1.3 bug 4 回归：snapshot.seats[i].status 必须是 'empty'，不能是 'free'。"""
-    env = simpy.Environment()
-    c = Canteen(env, make_def([
-        {"floor_id": 1, "windows": {"physical_count": 2, "active_count": 2}, "seats": {"count": 5}}
-    ]))
-    snap = c.snapshot()
-    for seat in snap["seats"]:
-        assert seat["status"] == "empty"
+# backend/tests/test_simpy_canteen.py — 7 条
+test_canteen_windows_resource_per_window           # 每窗口独立 simpy.Resource
+test_canteen_seats_pool_is_simpy_store              # 座位用 Store 调度
+test_canteen_shortest_window_uses_queue_load        # min by queue_load 跨楼层
+test_canteen_snapshot_shape_matches_phase2          # flat 形状与 Phase 2 字段同形
+test_canteen_total_arrived_increments_correctly     # 学生进入时累加
+test_canteen_total_served_increments_correctly      # 学生离开时累加
+test_canteen_avg_eat_time_in_minutes_not_seconds    # v1.3 bug 3 回归
 ```
 
-- [ ] **Step 2: 写多楼层专项测试 `test_multi_floor.py`**
+加 v1.3 bug 4 回归到一个独立测试：
+```python
+def test_canteen_seat_status_uses_empty_not_free():
+    # snapshot.seats[i].status 必须是 'empty'，不能是 'free'
+    ...
+```
+
+具体实现细节（make_def helper、断言代码）参考 spec §2.3 的 Canteen 完整代码与 §7.1 / §7.2 测试矩阵。
+
+- [ ] **Step 2: 写 test_multi_floor.py 全部 4 条（按 spec §7.1）**
 
 ```python
-# backend/tests/test_multi_floor.py
-def test_floors_unfold_correctly_across_canteen():
+# backend/tests/test_multi_floor.py — 4 条
+test_multi_floor_preset_loads                            # floors[] 嵌套结构能被 Canteen 正确加载
+test_multi_floor_window_seat_carry_correct_floor_id      # 每个 Window/Seat 带正确 floor_id
+test_multi_floor_snapshot_floors_match_flat              # flat 字段与 floors[] 分组一致
+test_multi_floor_single_floor_canteen_floors_length_one  # 单层食堂 floors[] 长度恰为 1
+```
+
+实现示例（其余按相同模式）：
+
+```python
+def test_multi_floor_window_seat_carry_correct_floor_id():
     env = simpy.Environment()
     c = Canteen(env, make_def([
         {"floor_id": 1, "windows": {"physical_count": 8, "active_count": 8}, "seats": {"count": 60}},
         {"floor_id": 2, "windows": {"physical_count": 0, "active_count": 0}, "seats": {"count": 80}},
     ]))
-    # 8 + 0 = 8 windows, all on floor 1
     assert len(c.windows) == 8
     assert all(w.floor_id == 1 for w in c.windows)
-    # 60 + 80 = 140 seats, by floor
-    assert len(c.seats) == 140
-    f1_seats = [s for s in c.seats if s.floor_id == 1]
-    f2_seats = [s for s in c.seats if s.floor_id == 2]
-    assert len(f1_seats) == 60
-    assert len(f2_seats) == 80
-
-def test_snapshot_floors_match_flat():
-    env = simpy.Environment()
-    c = Canteen(env, make_def([
-        {"floor_id": 1, "windows": {"physical_count": 4, "active_count": 4}, "seats": {"count": 20}},
-        {"floor_id": 2, "windows": {"physical_count": 2, "active_count": 2}, "seats": {"count": 30}},
-    ]))
-    snap = c.snapshot()
-    # 嵌套 floors[] 加起来等于 flat
-    flat_window_ids = sorted(w["id"] for w in snap["windows"])
-    nested_ids = sorted(w["id"] for f in snap["floors"] for w in f["windows"])
-    assert flat_window_ids == nested_ids
-
-def test_single_floor_canteen_floors_length_one():
-    env = simpy.Environment()
-    c = Canteen(env, make_def([
-        {"floor_id": 1, "windows": {"physical_count": 6, "active_count": 6}, "seats": {"count": 100}}
-    ]))
-    snap = c.snapshot()
-    assert len(snap["floors"]) == 1
+    assert sum(1 for s in c.seats if s.floor_id == 1) == 60
+    assert sum(1 for s in c.seats if s.floor_id == 2) == 80
 ```
 
 - [ ] **Step 3: 运行失败**
@@ -338,7 +307,7 @@ Expected: AttributeError 或 fail
 python -m pytest tests/test_simpy_canteen.py tests/test_multi_floor.py -v
 ```
 
-Expected: ≥ 6 条通过
+Expected: 11 条通过（test_simpy_canteen.py 7 + test_multi_floor.py 4）
 
 - [ ] **Step 6: Commit**
 
@@ -515,7 +484,7 @@ git commit -m "feat(simulation): StudentRouter 决策模型（耐心阈值 + 总
 
 参考 spec §2.10。
 
-- [ ] **Step 1: 写 3 个测试**
+- [ ] **Step 1: 写 5 个测试（覆盖 §10 灵敏度实验所需的 4 项指标）**
 
 ```python
 def test_avg_waiting_time_empty_returns_zero():
@@ -528,11 +497,25 @@ def test_record_wait_then_avg():
     s.record_wait(make_student(wait_time=180))
     assert s.avg_waiting_time() == 150
 
+def test_avg_walk_time_after_completion():
+    s = CampusStats()
+    s.record_completion(make_student(walk_time=60))
+    s.record_completion(make_student(walk_time=120))
+    assert s.avg_walk_time() == 90
+
 def test_switch_rate_zero_when_no_switches():
     s = CampusStats()
     s.record_completion(make_student(switch_count=0))
     s.record_completion(make_student(switch_count=0))
     assert s.switch_rate() == 0
+
+def test_switch_rate_counts_at_least_one_switch():
+    s = CampusStats()
+    s.record_completion(make_student(switch_count=0))
+    s.record_completion(make_student(switch_count=1))
+    s.record_completion(make_student(switch_count=2))
+    # 3 个学生中 2 个有切换 → 2/3
+    assert abs(s.switch_rate() - 2/3) < 0.01
 ```
 
 - [ ] **Step 2: 运行失败 → 实现 → 通过**
@@ -543,7 +526,7 @@ def test_switch_rate_zero_when_no_switches():
 python -m pytest tests/test_stats.py -v
 ```
 
-Expected: 3 passed
+Expected: 5 passed
 
 - [ ] **Step 3: Commit**
 
@@ -564,27 +547,18 @@ git commit -m "feat(simulation): CampusStats 学生级指标聚合"
 
 参考 spec §2.9。
 
-- [ ] **Step 1: 写 3 个测试**
+- [ ] **Step 1: 写 2 条不依赖 lifecycle 的测试**
 
 ```python
 def test_arrival_rate_formula():
     """λ_avg = N × α × coverage / T，单位人/分钟"""
     cfg = {"total_students": 28000, "lunch_alpha": 0.65,
            "coverage": 0.78, "peak_window_minutes": 90}
-    gen = ArrivalGenerator(env, cfg, ...)
+    # ArrivalGenerator 第 1 个参数 env 即可，其他可用 mock。
+    gen = ArrivalGenerator(env, cfg, canteens={}, router=None,
+                           campus=None, coordinator=None, rng=random.Random(42))
     expected = 28000 * 0.65 * 0.78 / 90
     assert abs(gen._compute_arrival_rate_per_minute() - expected) < 0.01
-
-def test_arrival_generator_drains_after_simulation_seconds():
-    """v1.3 bug 2 回归：simulation_seconds 后不再生成新学生。"""
-    env = simpy.Environment()
-    cfg = {..., "simulation_seconds": 60}  # 1 分钟截止
-    coordinator = make_coord(env, cfg)
-    env.run(until=120)  # 跑 2 分钟
-    # 1 分钟前后生成的学生数应基本相同
-    arrivals_at_60 = coordinator.total_arrived_at_time(60)  # 测试辅助
-    arrivals_at_120 = coordinator.total_arrived
-    assert arrivals_at_120 == arrivals_at_60
 
 def test_poisson_interval_distribution():
     """rng.expovariate(rate) 间隔均值应接近 1/rate。"""
@@ -594,15 +568,41 @@ def test_poisson_interval_distribution():
     assert 8 < avg < 12  # 均值 10 ± 浮动
 ```
 
-- [ ] **Step 2: 实现 → 测试通过**
+> **依赖说明**：第 3 条 `test_arrival_generator_drains_after_simulation_seconds`（v1.3 bug 2 回归）需要 `Coordinator` 与 `student_lifecycle` 函数已存在才能跑通（drain 测试要观察 coordinator.total_arrived 是否在 simulation_seconds 后停止增长）。这一条**先写测试名 + 加 `@pytest.mark.skip(reason="待 A.7 lifecycle + A.8 Coordinator 完成后解封")`**，等 A.8 任务完成后回到 A.6 文件解开 skip 跑通。
+>
+> 同样地，`ArrivalGenerator._run` 内的 `from .student import student_lifecycle` 是模块顶 import；这一步实现时若 student_lifecycle 还没写，可暂时把 import 放到 `_run` 函数内（lazy import）；A.7 完成后再移到模块顶部。
 
-参考 spec §2.9 完整代码：`_compute_arrival_rate_per_minute` / `_run` 含 simulation_seconds 截止逻辑。
+- [ ] **Step 2: 写 drain 测试占位（skip）**
+
+```python
+@pytest.mark.skip(reason="待 A.7 lifecycle + A.8 Coordinator 完成后解封")
+def test_arrival_generator_drains_after_simulation_seconds():
+    """v1.3 bug 2 回归：simulation_seconds 后不再生成新学生。"""
+    env = simpy.Environment()
+    cfg = {..., "simulation_seconds": 60}
+    coordinator = make_coord(env, cfg)
+    env.run(until=120)
+    arrivals_at_60 = coordinator.total_arrived_at_time(60)
+    arrivals_at_120 = coordinator.total_arrived
+    assert arrivals_at_120 == arrivals_at_60
+```
+
+- [ ] **Step 3: 实现 ArrivalGenerator → 2 条测试通过**
+
+参考 spec §2.9 完整代码。`_run` 内的 student_lifecycle import 用 lazy 形式（函数内 import）规避 A.7 还没完成的依赖。
 
 ```bash
 python -m pytest tests/test_arrival_generator.py -v
 ```
 
-Expected: 3 passed
+Expected: 2 passed + 1 skipped
+
+- [ ] **Step 4: A.8 完成后回到本文件解封 drain 测试**
+
+A.8 完成后：
+- 把 `_run` 顶部的 lazy import 移到模块顶部（如有）
+- 删 drain 测试的 `@pytest.mark.skip`
+- 跑 `python -m pytest tests/test_arrival_generator.py -v`，期望 3 passed
 
 - [ ] **Step 3: Commit**
 
@@ -856,7 +856,7 @@ Expected: 5 passed
 python -m pytest tests/ -q
 ```
 
-Expected: 不少于 70 条 passed（此时含 39 Phase 2 + 新加约 30+）
+Expected: 不少于 80 条 passed（含 39 Phase 2 兼容 + 11 simpy_canteen/multi_floor + 5 window + 4 campus + 8 router + 5 stats + 3 arrival_generator（其中 1 skip 待 A.8 解封）+ 7 coordinator + 5 campus_api + 3 db_migration）
 
 - [ ] **Step 8: Commit**
 
@@ -875,7 +875,7 @@ git commit -m "feat(api): /api/campus/* Blueprint + 会话统一管理"
 - Create: `backend/simulation/presets/xueyuan.json`
 - Create: `backend/simulation/presets/minghu_xueyi.json`
 - Create: `backend/simulation/presets/xuehuo.json`
-- Create: `backend/simulation/presets/liuyuan_xuesi.json`
+- Create: `backend/simulation/presets/xuesi.json`
 - Create: `backend/simulation/presets/_campus.json`（全局校园配置）
 
 > **占位数据**：5/4-5/5 实地调研后回填真实值。先用合理默认值跑通流程。
@@ -883,10 +883,10 @@ git commit -m "feat(api): /api/campus/* Blueprint + 会话统一管理"
 - [ ] **Step 1: 创建 4 个食堂 preset，按 spec §3.2 schema**
 
 每个文件用占位数据：
-- `xueyuan.json`：单层，6 窗口 / 200 座位
-- `minghu_xueyi.json`：双层（1F 8 窗口 / 100 座位，2F 0 窗口 / 150 座位）
-- `xuehuo.json`：单层，5 窗口 / 150 座位
-- `liuyuan_xuesi.json`：单层，4 窗口 / 120 座位
+- `xueyuan.json`：单层，6 窗口 / 200 座位（学苑食堂）
+- `minghu_xueyi.json`：双层（1F 8 窗口 / 100 座位，2F 0 窗口 / 150 座位）（明湖学一食堂）
+- `xuehuo.json`：单层，5 窗口 / 150 座位（学活食堂）
+- `xuesi.json`：单层，4 窗口 / 120 座位（学四食堂）
 
 每个 preset 都加注释字段 `"_TODO_field_research_pending": true`。
 
@@ -1433,12 +1433,25 @@ git commit -m "data: 部署阶段 6 组参数灵敏度实验结果"
 
 参考 spec §6.2。
 
-- [ ] **Step 1: 下载 Three.js r155+ 到 vendor**
+- [ ] **Step 1: 下载 Three.js r155+ 到 vendor（含 OrbitControls 与 PointerLockControls）**
 
 ```bash
 cd frontend/static/js/three/vendor
+# core
 curl -O https://unpkg.com/three@0.155.0/build/three.min.js
+# Controls 在 examples/ 下，需要单独下载（r155+ 不再打进 three.min.js）
+curl -O https://unpkg.com/three@0.155.0/examples/js/controls/OrbitControls.js
+curl -O https://unpkg.com/three@0.155.0/examples/js/controls/PointerLockControls.js
 ```
+
+> **r155+ 注意**：core 与 examples/js/controls 必须分开引入。index.html 加载顺序：
+> ```html
+> <script src="...vendor/three.min.js"></script>
+> <script src="...vendor/OrbitControls.js"></script>
+> <script src="...vendor/PointerLockControls.js"></script>
+> <script src="...three/scene.js"></script>
+> ```
+> 如不分开，`new THREE.OrbitControls(...)` 会抛 `is not a constructor`。
 
 - [ ] **Step 2: 写 scene.js**
 
