@@ -129,6 +129,8 @@ class Canteen:
                 w.canteen_avg_serve_time for w in self.windows
             ) / len(self.windows)
         else:
+            # 默认估值（秒）：当 preset 既没顶层 avg_serve_time_seconds、
+            # 也没任何楼层级值时使用；30 秒是高校食堂窗口服务时长的常见经验值。
             self.avg_serve_time = default_serve_time or 30.0
 
         # 座位资源池：simpy.Store 负责"谁抢到座位"的调度（跨楼层共享）
@@ -142,6 +144,12 @@ class Canteen:
         # 食堂级累计统计
         self.total_arrived: int = 0
         self.total_served: int = 0
+
+        # v1.3 robustness：防 shortest_window() 在空窗口列表上崩
+        assert self.active_window_count > 0, (
+            f"Canteen {self.id!r} 必须至少有 1 个 active 窗口；"
+            f"preset 配置错误或所有楼层 active_count 都为 0"
+        )
 
     def shortest_window(self) -> Window:
         return min(self.windows, key=lambda w: w.queue_load)
@@ -208,6 +216,9 @@ class Canteen:
                 })
 
         # 嵌套形状：按 floor_id 分组
+        # 不变量：每个 Window/Seat 都在 __init__ 时显式被赋了整数 floor_id；
+        # 学生中"等座"状态因不绑定楼层用 None，因此不会被任何 floor 块收编。
+        # flat[*] 与 sum(floors[].*) 形成完全分区（除等座学生外）。
         floors_block = []
         for meta in self.floors_meta:
             fid = meta.floor_id

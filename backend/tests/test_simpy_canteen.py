@@ -1,4 +1,5 @@
-"""A.2.2 Canteen 类的 SimPy 行为单元测试（共 7 条）。"""
+"""A.2.2 Canteen 类的 SimPy 行为单元测试（共 8 条）。"""
+import pytest
 import simpy
 from simulation.canteen import Canteen, Window, Seat
 from simulation.student import Student
@@ -104,3 +105,17 @@ def test_canteen_avg_eat_time_in_minutes_not_seconds():
         {"floor_id": 1, "windows": {"physical_count": 4, "active_count": 4}, "seats": {"count": 30}}
     ]))
     assert c.avg_eat_time == 15
+
+
+# 8. v1.3 robustness：preset 全 active_count=0 时 __init__ 必须明确失败
+def test_canteen_init_rejects_zero_active_windows():
+    """preset 全 active_count=0 时 __init__ 必须明确失败，不延迟到 shortest_window 才崩。"""
+    env = simpy.Environment()
+    bad_def = {
+        "id": "bad", "display_name": "坏", "campus_position": {"x": 0, "y": 0},
+        "avg_serve_time_seconds": 30, "avg_eat_time_minutes": 15,
+        "arrival_weight": 1.0, "typical_wait_seconds": 120,
+        "floors": [{"floor_id": 1, "windows": {"physical_count": 5, "active_count": 0}, "seats": {"count": 30}}],
+    }
+    with pytest.raises(AssertionError):
+        Canteen(env, bad_def)
