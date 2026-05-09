@@ -491,6 +491,8 @@ class CampusCoordinator:
                     1 for c in all_canteens for s in c.seats if s.student is None
                 ),
                 "avg_waiting_time": self.stats.avg_waiting_time(),
+                "avg_walk_time": self.stats.avg_walk_time(),
+                "switch_rate": self.stats.switch_rate(),
             },
         }
 ```
@@ -685,8 +687,11 @@ class ArrivalGenerator:
         self._process = env.process(self._run())
 
     def _compute_arrival_rate_per_minute(self) -> float:
-        """根据 §3.4 公式计算 λ（人/分钟）。
-        第一版用恒定 λ_avg；部署阶段灵敏度分析可叠加 peak_beta 时间段。
+        """根据 §3.4 公式计算 λ_avg（人/分钟），用于 _run 的恒定到达过程。
+
+        第一版只读取 N / α / coverage / T 四个字段；
+        config["campus"]["peak_beta"] 字段会被 §10 部署阶段灵敏度实验单独读取使用，
+        不参与本方法返回值计算。
         """
         N = self.config["total_students"]
         alpha = self.config["lunch_alpha"]
@@ -914,6 +919,9 @@ class CampusStats:
 
 ### 4.3 校园联合 step 响应形状
 
+> **`in_transit[].from_canteen_id` 可为 `null`**：学生从校园入口到第一个食堂的过程中，`from_canteen_id == null`，`to_canteen_id` 为目标食堂。前端 3D 视图遇到 `null` 时按"从校园入口出发"渲染，对应 `Campus.transit_progress` 中 `from_id is None` 的分支。
+
+
 ```json
 {
   "current_time": 1230.5,
@@ -931,6 +939,12 @@ class CampusStats:
       "from_canteen_id": "xueyi",
       "to_canteen_id": "xueer",
       "progress": 0.42
+    },
+    {
+      "id": 1024,
+      "from_canteen_id": null,
+      "to_canteen_id": "xueyi",
+      "progress": 0.18
     }
   ],
   "campus_totals": {
@@ -941,10 +955,14 @@ class CampusStats:
     "total_in_queue": 95,
     "total_eating": 124,
     "empty_seats": 432,
-    "avg_waiting_time": 142.3
+    "avg_waiting_time": 142.3,
+    "avg_walk_time": 86.7,
+    "switch_rate": 0.043
   }
 }
 ```
+
+`avg_walk_time` 与 `switch_rate` 给 §10 部署阶段灵敏度分析提供数据列；`switch_rate` 是切换学生比例（0.0-1.0），`avg_walk_time` 含初次到达 + 跨食堂迁移两段走路秒数。
 
 ### 4.4 会话状态统一管理
 
@@ -1427,3 +1445,4 @@ flask-cors>=4.0.0
 |---|---|---|---|
 | v1.0 | 2026-04-28 | 初稿：完成多食堂扩展 + 沉浸式可视化的总体方案设计、模块边界、接口草案、测试矩阵、时间线 | 朱思思 |
 | v1.1 | 2026-04-28 | 内部交叉评审反馈修订：补充 Campus（§2.8）/ ArrivalGenerator（§2.9）/ CampusStats（§2.10）三个原本被引用但未定义的辅助类；补 transit_students 在 lifecycle 中的 walking_start / walking_end 钩子；明确 RouterConfig 由 dict 转 dataclass；补 stats.record_wait / record_completion 接入点；澄清 sum(canteen.total_arrived) 与 coordinator.total_arrived 的两类差异；删除 §2.5 一处空操作语句；§6.1 措辞从 "tick" 改为 "轮询循环 / dispatchStep" | 朱思思 |
+| v1.2 | 2026-04-28 | 收尾建议：§4.3 显式说明 `in_transit[].from_canteen_id == null` 表示从校园入口出发；§2.9 注释 peak_beta 字段为 §10 灵敏度实验保留，不参与 _compute_arrival_rate_per_minute；将 avg_walk_time / switch_rate 暴露到 campus_totals，给 §10 灵敏度表提供 avg_extra_walk / switch_rate 列数据来源 | 朱思思 |
