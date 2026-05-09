@@ -57,3 +57,49 @@ def test_old_history_query_still_works(tmp_path):
     with sqlite3.connect(db) as c:
         rows = c.execute("SELECT total_arrived FROM simulation_snapshot WHERE config_id=1").fetchall()
     assert rows == [(50,)]
+
+
+def test_alter_preserves_existing_phase2_rows(tmp_path):
+    """迁移后 Phase 2 旧行数据完整，新列默认值正确。"""
+    db = str(tmp_path / "t.db")
+    # 模拟 Phase 2 旧表，并插入一条数据
+    with sqlite3.connect(db) as c:
+        c.execute("""CREATE TABLE simulation_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            window_count INTEGER, seat_count INTEGER,
+            avg_serve_time REAL, avg_eat_time REAL,
+            arrival_rate REAL, total_time INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""")
+        c.execute("INSERT INTO simulation_config (window_count, seat_count, avg_serve_time, avg_eat_time, arrival_rate, total_time) VALUES (6, 200, 30, 15, 5, 60)")
+
+    # 迁移
+    migrate(db)
+
+    # 验证：老数据未丢失，新列默认值正确
+    with sqlite3.connect(db) as c:
+        row = c.execute("SELECT window_count, seat_count, mode FROM simulation_config WHERE id=1").fetchone()
+    assert row == (6, 200, "single")
+
+
+def test_migrate_is_idempotent_when_called_twice(tmp_path):
+    """连续两次 migrate 不应抛异常，也不重复 ALTER。"""
+    db = str(tmp_path / "t.db")
+    # 模拟 Phase 2 旧表
+    with sqlite3.connect(db) as c:
+        c.execute("""CREATE TABLE simulation_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            window_count INTEGER, seat_count INTEGER,
+            avg_serve_time REAL, avg_eat_time REAL,
+            arrival_rate REAL, total_time INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""")
+    # 第 1 次：把 db 迁到新 schema
+    migrate(db)
+    # 第 2 次：不应抛
+    migrate(db)
+    # 验证列依然只加了一遍（不是两个 mode 列等）
+    with sqlite3.connect(db) as c:
+        cols = [r[1] for r in c.execute("PRAGMA table_info(simulation_config)")]
+    assert cols.count("mode") == 1
+    assert cols.count("campus_config_json") == 1
