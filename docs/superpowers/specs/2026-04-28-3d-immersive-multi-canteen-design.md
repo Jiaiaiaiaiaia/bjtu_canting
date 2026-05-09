@@ -78,10 +78,11 @@ backend/
 │   ├── router.py            # StudentRouter 决策模型
 │   ├── coordinator.py       # CampusCoordinator 校园协调器
 │   ├── stats.py             # 统计指标采集（按 canteen_id 分组）
-│   └── presets/             # 北交大食堂参数预设（JSON）
-│       ├── xueyi.json
-│       ├── xueer.json
-│       └── ...
+│   └── presets/             # 北交大主校区食堂参数预设（JSON）
+│       ├── xueyuan.json         # 学苑食堂
+│       ├── minghu_xueyi.json    # 明湖学一食堂
+│       ├── xuehuo.json          # 学活食堂
+│       └── liuyuan_xuesi.json   # 柳园学四食堂
 ├── api/
 │   ├── routes.py            # 已有 10 个接口保留
 │   └── campus_routes.py     # 新增 /api/campus/* Blueprint
@@ -687,14 +688,14 @@ class StudentRouter:
     "simulation_seconds": 5400,
     "entrance_position": {"x": 0, "y": 0},
     "walking_time_seconds": {
-      "xueyi":   {"xueer": 120, "xueyuan": 240, "siyuan": 180},
-      "xueer":   {"xueyi": 120, "xueyuan": 150, "siyuan": 90},
-      "xueyuan": {"xueyi": 240, "xueer": 150, "siyuan": 120},
-      "siyuan":  {"xueyi": 180, "xueer": 90,  "xueyuan": 120}
+      "xueyuan":        {"minghu_xueyi": 180, "xuehuo": 120, "liuyuan_xuesi": 240},
+      "minghu_xueyi":   {"xueyuan": 180, "xuehuo": 150, "liuyuan_xuesi": 90},
+      "xuehuo":         {"xueyuan": 120, "minghu_xueyi": 150, "liuyuan_xuesi": 200},
+      "liuyuan_xuesi":  {"xueyuan": 240, "minghu_xueyi": 90,  "xuehuo": 200}
     },
     "walking_speed_mps": 1.4,
     "entrance_walk_seconds": {
-      "xueyi": 90, "xueer": 60, "xueyuan": 150, "siyuan": 120
+      "xueyuan": 120, "minghu_xueyi": 90, "xuehuo": 60, "liuyuan_xuesi": 180
     }
   }
 }
@@ -882,16 +883,16 @@ class CampusStats:
 
 ## 3. 实地调研与真实数据接入
 
-### 3.1 食堂候选清单（待 2026-05-04 至 2026-05-05 实地核验）
+### 3.1 食堂候选清单（主校区 4 食堂，2026-05-04 至 2026-05-05 实地核验）
 
-主校区候选 4 个学生食堂，最终名称以现场为准：
+主校区目标调研 4 个学生食堂：
 
-```
-1. 学一食堂（待核验）
-2. 学二食堂（待核验）
-3. 学苑食堂 / 学苑餐厅（待核验，名字以现场为准）
-4. 思源食堂（待核验，或调研后确定的主校区学生主要去向）
-```
+| code（preset 内引用） | display_name | 备注 |
+|---|---|---|
+| `xueyuan` | 学苑食堂 | 学苑区域 |
+| `minghu_xueyi` | 明湖学一食堂 | 明湖区域 |
+| `xuehuo` | 学活食堂 | 学生活动中心 |
+| `liuyuan_xuesi` | 柳园学四食堂 | 柳园区域 |
 
 **第一版排除**：
 - 教职工食堂（学生流量低）
@@ -899,12 +900,12 @@ class CampusStats:
 
 ### 3.2 食堂参数预设字段（presets/&lt;canteen_id&gt;.json）
 
-**v1.3 schema：每食堂可由多楼层组成。** `floors[]` 中每层独立配置窗口/座位/布局；学一可能 1 楼打饭 + 2 楼座位，学二可能两层都有窗口。
+**v1.3 schema：每食堂可由多楼层组成。** `floors[]` 中每层独立配置窗口/座位/布局；明湖学一可能 1 楼打饭 + 2 楼座位，学活可能两层都有窗口。
 
 ```json
 {
-  "id": "xueyi",
-  "display_name": "学一食堂",
+  "id": "minghu_xueyi",
+  "display_name": "明湖学一食堂",
   "campus_position": {"x": 120, "y": 80},
   "entrances": 2,
   "avg_eat_time_minutes": 15,
@@ -1063,23 +1064,23 @@ class CampusStats:
   "current_time": 1230.5,
   "mode": "campus",
   "canteens": {
-    "xueyi": { "...": "Canteen.snapshot() 的输出，与 Phase 2 形状兼容" },
-    "xueer": { "..." : "..." },
-    "xueyuan": { "..." : "..." },
-    "siyuan": { "..." : "..." }
+    "xueyuan":       { "...": "Canteen.snapshot() 的输出，与 Phase 2 形状兼容" },
+    "minghu_xueyi":  { "..." : "..." },
+    "xuehuo":        { "..." : "..." },
+    "liuyuan_xuesi": { "..." : "..." }
   },
-  "canteen_order": ["xueyi", "xueer", "xueyuan", "siyuan"],
+  "canteen_order": ["xueyuan", "minghu_xueyi", "xuehuo", "liuyuan_xuesi"],
   "in_transit": [
     {
       "id": 1023,
-      "from_canteen_id": "xueyi",
-      "to_canteen_id": "xueer",
+      "from_canteen_id": "xueyuan",
+      "to_canteen_id": "minghu_xueyi",
       "progress": 0.42
     },
     {
       "id": 1024,
       "from_canteen_id": null,
-      "to_canteen_id": "xueyi",
+      "to_canteen_id": "xueyuan",
       "progress": 0.18
     }
   ],
@@ -1151,8 +1152,8 @@ CREATE TABLE campus_snapshot (
 ```sql
 CREATE TABLE canteen_definition (
     id INTEGER PRIMARY KEY,
-    code TEXT UNIQUE NOT NULL,             -- "xueyi" 等
-    display_name TEXT NOT NULL,            -- "学一食堂"
+    code TEXT UNIQUE NOT NULL,             -- "xueyuan" / "minghu_xueyi" / "xuehuo" / "liuyuan_xuesi"
+    display_name TEXT NOT NULL,            -- "学苑食堂" / "明湖学一食堂" 等
     location_x REAL,
     location_y REAL,
     physical_window_count INTEGER,
@@ -1532,8 +1533,8 @@ three/
 
 ```json
 {
-  "id": "xueyi",
-  "display_name": "学一食堂",
+  "id": "minghu_xueyi",
+  "display_name": "明湖学一食堂",
   "campus_position": {"x": 120, "y": 80},
   "windows": [...],
   "seats": [...],
@@ -1622,7 +1623,7 @@ three/
 
 | 文档 | 责任人主笔 | 内容要点 |
 |---|---|---|
-| 《联调测试报告》 | 朱思思 | 多食堂联合仿真联调过程 / Phase 2 兼容回归通过情况 / 70+ 单测全绿 / 双模式 e2e 演练 |
+| 《联调测试报告》 | 朱思思 | 多食堂联合仿真联调过程 / Phase 2 兼容回归通过情况 / 不少于 80 条单测全绿 / 双模式 e2e 演练 |
 | 《集成阶段小组沟通交流记录》 | 朱思思 | 4/28 起的方案讨论与会议纪要、调研协调、联调对接 |
 | 团队源码归档包（提交时按教师模板转为 RAR） | 朱思思 | 整体打包，`SRC_03小组` 顶层目录 |
 
@@ -1776,3 +1777,4 @@ flask-cors>=4.0.0
 | v1.1 | 2026-04-28 | 内部交叉评审反馈修订：补充 Campus（§2.8）/ ArrivalGenerator（§2.9）/ CampusStats（§2.10）三个原本被引用但未定义的辅助类；补 transit_students 在 lifecycle 中的 walking_start / walking_end 钩子；明确 RouterConfig 由 dict 转 dataclass；补 stats.record_wait / record_completion 接入点；澄清 sum(canteen.total_arrived) 与 coordinator.total_arrived 的两类差异；删除 §2.5 一处空操作语句；§6.1 措辞从 "tick" 改为 "轮询循环 / dispatchStep" | 朱思思 |
 | v1.2 | 2026-04-28 | 收尾建议：§4.3 显式说明 `in_transit[].from_canteen_id == null` 表示从校园入口出发；§2.9 注释 peak_beta 字段为 §10 灵敏度实验保留，不参与 _compute_arrival_rate_per_minute；将 avg_walk_time / switch_rate 暴露到 campus_totals，给 §10 灵敏度表提供 avg_extra_walk / switch_rate 列数据来源 | 朱思思 |
 | v1.3 | 2026-04-28 | 1) 修 4 个实现级 bug：切换食堂时未更新 student.target_canteen_id；ArrivalGenerator 无限循环；avg_eat_time 单位双重转换；seat status 用 "free" 与 Phase 2 "empty" 不兼容。2) 引入多楼层 + 三层视图架构：preset 改用 floors[] 嵌套；Window/Seat 加 floor_id；Canteen.snapshot 同时输出 flat（Phase 2 兼容）+ floors[]（v1.3 新前端用）；前端三层 = 校园地图（SVG/3D）→ 食堂下钻（Canvas/3D）→ 楼层 Tab；新增 campus_map.js / floor_tabs.js；§3.2 preset、§7.1 测试矩阵、§9 时间线、§11 DoD 同步更新；测试目标从 70 条提到 80 条 | 朱思思 |
+| v1.4 | 2026-04-28 | 食堂名单与命名一致性更新：把全文示例食堂从虚构的 xueyi/xueer/xueyuan/siyuan 全部替换为主校区实际 4 食堂 xueyuan / minghu_xueyi / xuehuo / liuyuan_xuesi（display_name 学苑/明湖学一/学活/柳园学四）；同步 §2.1 preset 文件名、§2.8 walking matrix、§3.1 候选清单、§3.2 preset 示例、§4.3 step 响应示例、§5.3 元数据表注释、§6.3 后端 3D 字段示例。§8.2 联调测试报告内容要点把"70+ 单测全绿"改为"不少于 80 条单测全绿"，与 §7.1 / §11.1 测试目标对齐 | 朱思思 |
