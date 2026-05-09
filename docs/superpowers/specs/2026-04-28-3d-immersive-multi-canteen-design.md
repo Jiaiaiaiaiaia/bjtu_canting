@@ -1590,6 +1590,7 @@ three/
 - `test_canteen_leave_seat_queue_idempotent`（新增）
 - `test_lifecycle_target_canteen_id_updates_on_switch`（新增；防止 v1.3 修过的 bug 1 回归）
 - `test_arrival_generator_drains_after_simulation_seconds`（新增；防止 v1.3 修过的 bug 2 回归）
+- `test_canteen_avg_eat_time_in_minutes_not_seconds`（新增；防止 v1.3 修过的 bug 3 回归——验证 Canteen.avg_eat_time 与 preset.avg_eat_time_minutes 数值一致，未被 ×60）
 
 ### 7.3 可复现性
 
