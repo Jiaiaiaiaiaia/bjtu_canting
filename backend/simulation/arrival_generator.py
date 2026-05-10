@@ -36,6 +36,15 @@ class ArrivalGenerator:
         self.coordinator = coordinator
         self.rng = rng
         self._next_student_id = 0
+        # 早期校验：rate <= 0 会让 rng.expovariate(0) 抛 ValueError；
+        # 在 __init__ 立刻发现比延迟到 _run 第一帧炸更易定位（与 A.3.1 walking_speed_mps
+        # 同一防御模式）。
+        rate_per_minute = self._compute_arrival_rate_per_minute()
+        if rate_per_minute <= 0:
+            raise ValueError(
+                "arrival rate must be positive; "
+                "check total_students / lunch_alpha / coverage / peak_window_minutes"
+            )
         self._process = env.process(self._run())
 
     def _compute_arrival_rate_per_minute(self) -> float:

@@ -60,3 +60,80 @@ def test_arrival_generator_drains_after_simulation_seconds():
     # arrivals_at_60 = coordinator.snapshot_at_time(60).total_arrived
     # arrivals_at_120 = coordinator.total_arrived
     # assert arrivals_at_120 == arrivals_at_60
+
+
+# 4. v1.3 bug 2 边界回归：env.now >= stop_after 时不再 spawn 新学生
+def test_arrival_generator_does_not_spawn_after_simulation_seconds(monkeypatch):
+    """v1.3 bug 2 边界回归：env.now >= stop_after 时不再 spawn 新学生。
+
+    _run 的 `if self.env.now + interval >= stop_after` 分支必须被覆盖：
+    截止时刻之后 _next_student_id 不再增长。
+
+    实现细节：因为 _run 内部 lazy import student_lifecycle（A.7.1 才建），
+    本测试用 monkeypatch 注入 stub，让 lazy import 成功。
+    """
+    # Stub student_lifecycle 让 _run 的 lazy import 成功；stub 是空 generator 不阻塞。
+    import simulation.student as student_mod
+
+    def stub_lifecycle(env, student, *args, **kwargs):
+        # 必须是 generator function（env.process 要 generator）；不 yield 直接 return 会变成 None 函数
+        if False:
+            yield
+        return
+
+    monkeypatch.setattr(student_mod, "student_lifecycle", stub_lifecycle, raising=False)
+
+    # Stub router 提供 sample_patience（_spawn_student 会调）
+    class StubRouter:
+        def sample_patience(self):
+            return 180.0
+
+    env = simpy.Environment()
+    cfg = {
+        "total_students": 28000,
+        "lunch_alpha": 0.65,
+        "coverage": 0.65,
+        "peak_window_minutes": 90,
+        "simulation_seconds": 60,  # 1 分钟截止
+    }
+    rng = random.Random(42)
+    gen = ArrivalGenerator(
+        env, cfg, canteens={}, router=StubRouter(),
+        campus=None, coordinator=None, rng=rng,
+    )
+
+    # 推进到截止时刻
+    env.run(until=60)
+    spawn_count_at_60 = gen._next_student_id
+
+    # 继续推进到 2 分钟（截止后）
+    env.run(until=120)
+    spawn_count_at_120 = gen._next_student_id
+
+    # 截止后不再 spawn
+    assert spawn_count_at_120 == spawn_count_at_60, (
+        f"spawn count grew from {spawn_count_at_60} to {spawn_count_at_120} "
+        f"after simulation_seconds=60, but _run should have stopped."
+    )
+    # 截止前应已经 spawn 过——否则测试 trivially 通过
+    # rate ≈ 28000 × 0.65 × 0.65 / 90 ≈ 131 人/分钟，60 秒应有几十次
+    assert spawn_count_at_60 > 5, (
+        f"only {spawn_count_at_60} spawned in first 60s; rate likely too low for meaningful test"
+    )
+
+
+# 5. rate=0（如 coverage=0）必须 raise ValueError，不延迟到 _run 第一帧崩
+def test_arrival_generator_rejects_zero_rate():
+    """rate=0（如 coverage=0）必须 raise ValueError，不延迟到 _run 第一帧崩。"""
+    env = simpy.Environment()
+    cfg_zero_coverage = {
+        "total_students": 28000,
+        "lunch_alpha": 0.65,
+        "coverage": 0,   # 触发 rate=0
+        "peak_window_minutes": 90,
+    }
+    with pytest.raises(ValueError, match="arrival rate must be positive"):
+        ArrivalGenerator(
+            env, cfg_zero_coverage, canteens={}, router=None,
+            campus=None, coordinator=None, rng=random.Random(42),
+        )
