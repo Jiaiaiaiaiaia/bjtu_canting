@@ -79,10 +79,9 @@ class StudentRouter:
             walk = self.campus.walking_time(current.id, c.id)
             if self.config.information_mode == "live_congestion":
                 # 演示模式：可解释为"校园 App 提供实时拥挤信息"
-                # 学生看到的是整个食堂的拥挤度（全部窗口排队总人数 × 平均服务时间），
-                # 而不是某个窗口；与 spec §2.7 的设计意图（"看见食堂内部全部状态"）一致。
-                total_load = sum(w.queue_load for w in c.windows)
-                est_wait = total_load * c.avg_serve_time
+                # 学生看到的是该食堂最短窗口的队伍长度和服务时间，与 spec §2.7 一致。
+                target_window = c.shortest_window()
+                est_wait = target_window.queue_load * c.avg_serve_time
             else:  # "local_estimate"
                 # 学生靠经验/口碑估，不依赖其他食堂的 live 状态
                 est_wait = c.typical_wait_seconds

@@ -229,11 +229,16 @@ def test_router_uses_current_window_not_shortest_window():
 
 # 8. local_estimate vs live_congestion 模式开关
 def test_router_live_congestion_mode_toggle():
-    """live_congestion 模式下，候选估值用 queue_load × avg_serve_time（实时）；
-    local_estimate 用 typical_wait_seconds（口碑）。两种模式行为应有可观察差异。"""
+    """live_congestion 模式下，候选估值用 shortest_window().queue_load × avg_serve_time（实时）；
+    local_estimate 用 typical_wait_seconds（口碑）。两种模式行为应有可观察差异。
+
+    fixture：xuehuo 配成单窗口，50 人全挤进唯一窗口，shortest_window 即 50 人队，
+    est_wait = 50 × 30 = 1500，与 spec §2.7 的"shortest_window 估值"模型一致。
+    """
     env = simpy.Environment()
-    canteens = make_3_canteens(env)
-    # 给 xuehuo 窗口 0 塞 50 人
+    # 关键改动：xuehuo 只配 1 个 active 窗口（windows=(6, 1, 9)）
+    canteens = make_3_canteens(env, windows=(6, 1, 9))
+    # 给 xuehuo 唯一窗口 0 塞 50 人
     for i in range(50):
         canteens["xuehuo"].windows[0].join_queue(Student(id=700 + i, state="queueing"))
 
@@ -249,8 +254,9 @@ def test_router_live_congestion_mode_toggle():
     router_local, _ = make_router(canteens, info_mode="local_estimate")
     assert router_local.try_switch(s, canteens, exclude_id="minghu_xueyi") is None
 
-    # live_congestion：xuehuo 实时队 50 × 30 = 1500 + walk=60 = 1560 → 远大于 minghu 队 150
-    # 实时模式下 xuesi 几乎空：0 + 60 = 60；60×1.3=78 < 150 → 切到 xuesi
+    # live_congestion：xuehuo shortest_window 即唯一窗口，queue_load=50 → est_wait=50×30=1500
+    # candidate cost = 60 walk + 1500 = 1560 → 远大于 minghu 队 150
+    # 而 xuesi 几乎空：shortest_window queue_load=0 → est_wait=0；cost = 60+0 = 60；60×1.3=78 < 150 → 切到 xuesi
     router_live, _ = make_router(canteens, info_mode="live_congestion")
     alt = router_live.try_switch(s, canteens, exclude_id="minghu_xueyi")
     assert alt is not None
