@@ -234,3 +234,66 @@ def test_lifecycle_record_wait_called_when_serving():
     assert len(coordinator.stats._wait_times) >= 1, (
         f"record_wait 应至少被调一次；实际 _wait_times = {coordinator.stats._wait_times}"
     )
+
+
+# 6. 硬等分支：patience 超时但 try_switch 返回 None（唯一食堂无备选）→ yield req 硬等
+def test_lifecycle_hard_waits_when_no_switch_alternative():
+    """硬等分支：当 patience 超时但 try_switch 找不到替代食堂时，
+    lifecycle 应 `yield req` 硬等到拿到资源，最终走完全流程。
+
+    构造：1 食堂（try_switch 候选列表为空，唯一在 exclude_id 里 → 返回 None）。
+    用 hold_resource 占住 simpy.Resource 触发 patience 超时。
+    hold_resource 释放后，lifecycle 学生应拿到资源 → 继续 service → seat → eat → left。
+
+    断言重点：
+    - 学生最终 state == "left"（走完完整 lifecycle）
+    - switch_count == 0（没有切换发生，因为没有备选）
+    - record_wait 被调过（学生确实等了一段并最终被服务）
+    - wait_time > patience_threshold（说明确实硬等了超过 patience 阈值）
+    - record_completion 被调过
+    """
+    env = simpy.Environment()
+    canteen = make_canteen(env, "xuesi", windows=1, seats=5, avg_serve=10)
+    canteens = {"xuesi": canteen}  # 唯一食堂——try_switch 必返回 None
+    campus = make_campus(canteens, entrance_walks={"xuesi": 1})
+    coordinator = StubCoordinator(env)
+    router = make_router(campus, patience_mean=20)  # 短耐心强制触发 timeout
+
+    # 用 hold_resource 真正占住 simpy.Resource 一段时间（30 秒）
+    # 这样 patience（20s）会先 timeout，触发 try_switch 走硬等分支
+    def hold_resource(env, resource, hold_seconds):
+        with resource.request() as req:
+            yield req
+            yield env.timeout(hold_seconds)
+
+    env.process(hold_resource(env, canteen.windows[0].resource, 30))
+
+    s = Student(id=1, state="arriving", patience_threshold=20)
+    env.process(student_lifecycle(env, s, router, canteens, campus, coordinator))
+    env.run(until=2000)
+
+    # 学生应走完全流程
+    assert s.state == "left", (
+        f"学生应硬等到资源然后吃完离开，当前 state={s.state}; "
+        f"如果 state='queueing'，说明硬等路径没工作；如果 state='switching'，说明错误地切换了"
+    )
+
+    # 没有切换发生（候选列表空）
+    assert s.switch_count == 0, (
+        f"唯一食堂场景下不应切换，实际 switch_count={s.switch_count}"
+    )
+
+    # record_wait 被调过
+    assert len(coordinator.stats._wait_times) >= 1, (
+        f"record_wait 应至少被调一次；实际 _wait_times = {coordinator.stats._wait_times}"
+    )
+
+    # 学生 wait_time > patience_threshold（说明确实硬等了超过 patience 阈值）
+    assert s.wait_time > 20, (
+        f"硬等分支应让学生等待时间 > patience(20s)，实际 wait_time={s.wait_time}"
+    )
+
+    # record_completion 也被调过
+    assert s.id in coordinator.left_calls, (
+        f"学生离开时 on_student_left 应被调，实际 left_calls = {coordinator.left_calls}"
+    )
