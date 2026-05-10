@@ -246,11 +246,23 @@ class Canteen:
             "id": self.id,
             "display_name": self.display_name,
             "campus_position": self.campus_position,
-            # flat 形状（Phase 2 兼容）
+            # === Phase 2 顶层统计字段（前端 updateInfoPanel 直接读） ===
+            "current_time": self.env.now,
+            "total_arrived": self.total_arrived,
+            "total_served": self.total_served,
+            "total_in_queue": (
+                sum(w.queue_length for w in self.windows) + self.seat_waiting_count
+            ),
+            "total_eating": sum(1 for s in self.seats if s.student is not None),
+            "empty_seats": sum(1 for s in self.seats if s.student is None),
+            # avg_waiting_time 占位值；A.5.1 加 CampusStats 后由 Coordinator
+            # 在 campus snapshot 里替换为按食堂分组的均值。Canteen 自身不维护等待时间序列。
+            "avg_waiting_time": 0.0,
+            # === flat 形状（Phase 2 兼容） ===
             "windows": flat_windows,
             "seats": flat_seats,
             "students": students,
             "waiting_queue_length": self.seat_waiting_count,
-            # 嵌套形状（v1.3 新增；新前端按楼层 Tab 用）
+            # === 嵌套形状（v1.3 新增） ===
             "floors": floors_block,
         }

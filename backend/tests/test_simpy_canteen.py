@@ -119,3 +119,47 @@ def test_canteen_init_rejects_zero_active_windows():
     }
     with pytest.raises(ValueError, match="active window"):
         Canteen(env, bad_def)
+
+
+# 9. Phase 2 顶层统计字段检查
+def test_canteen_snapshot_includes_phase2_top_level_stats():
+    """前端 updateInfoPanel(data) 直接读这 7 个顶层字段，必须全部出现。"""
+    env = simpy.Environment()
+    c = Canteen(env, make_def([
+        {"floor_id": 1, "windows": {"physical_count": 4, "active_count": 4}, "seats": {"count": 10}}
+    ]))
+    snap = c.snapshot()
+    # 7 个 Phase 2 顶层字段
+    assert "current_time" in snap
+    assert "total_arrived" in snap
+    assert "total_served" in snap
+    assert "total_in_queue" in snap
+    assert "total_eating" in snap
+    assert "empty_seats" in snap
+    assert "avg_waiting_time" in snap
+    # 初始值
+    assert snap["current_time"] == 0  # env.now 起始 0
+    assert snap["total_arrived"] == 0
+    assert snap["total_served"] == 0
+    assert snap["total_in_queue"] == 0
+    assert snap["total_eating"] == 0
+    assert snap["empty_seats"] == 10  # 全部空着
+    assert snap["avg_waiting_time"] == 0.0
+
+
+# 10. total_in_queue 包含窗口 + 等座两段
+def test_canteen_snapshot_total_in_queue_includes_windows_and_seat_waiting():
+    """total_in_queue 必须 = 窗口排队 + 等座队列两段，与 Phase 2 单食堂语义一致。"""
+    env = simpy.Environment()
+    c = Canteen(env, make_def([
+        {"floor_id": 1, "windows": {"physical_count": 3, "active_count": 3}, "seats": {"count": 5}}
+    ]))
+    # 给窗口 0 塞 2 人
+    c.windows[0].join_queue(Student(id=1, state="queueing"))
+    c.windows[0].join_queue(Student(id=2, state="queueing"))
+    # 给等座队列塞 3 人
+    c.join_seat_queue(Student(id=10, state="waiting_seat"))
+    c.join_seat_queue(Student(id=11, state="waiting_seat"))
+    c.join_seat_queue(Student(id=12, state="waiting_seat"))
+    snap = c.snapshot()
+    assert snap["total_in_queue"] == 2 + 3  # 5
