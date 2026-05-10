@@ -102,19 +102,31 @@ def test_router_pick_initial_distribution():
 
 # 2. 当前队和候选差不多时不切换（防抖动）
 def test_router_no_switch_when_close():
+    """边界场景：current_est 与候选 cost 接近时，switch_improvement_ratio 防抖应阻止切换。
+
+    设计参数：
+      minghu 窗口 0 前面 9 人 → s 在 index 9 → current_est = (9 + 0) × 30 = 270
+      xuehuo 候选 cost = walk(30) + typical_wait(200) = 230
+      230 × 1.3 = 299 > 270 → 不切换（差距 29s，margin 较窄但仍触发防抖）
+
+    重点：current_est 必须明确非零，避免落入"任何阈值都不切换"的假阳性。
+    """
     env = simpy.Environment()
     canteens = make_3_canteens(env)
-    router, _ = make_router(canteens)
-    # 学生站在 minghu 窗口 0，前面 3 人 → current_est = (3+0) × 30 = 90s
+    router, _ = make_router(
+        canteens,
+        walking_seconds={"minghu_xueyi": {"xuehuo": 30}},
+    )
     s = Student(id=1, state="queueing",
                 current_canteen_id="minghu_xueyi", current_window_id=0,
                 target_canteen_id="minghu_xueyi", switch_count=0)
-    for _ in range(3):
-        canteens["minghu_xueyi"].windows[0].join_queue(s)
-    canteens["minghu_xueyi"].windows[0].leave_queue(s)
-    canteens["minghu_xueyi"].windows[0].join_queue(s)  # 让 s 在 index 0
-    # 此时 typical_wait_seconds=200 + walk≈100s = 候选 cost ~300
-    # current_est ~30s（队首），300 × 1.3 = 390 > 30，不换
+    # 9 个 dummy 学生塞队首，s 进 index 9
+    for i in range(9):
+        canteens["minghu_xueyi"].windows[0].join_queue(Student(id=900 + i, state="queueing"))
+    canteens["minghu_xueyi"].windows[0].join_queue(s)
+
+    # 显式断言 current_est：保证测试真的在测阈值，不是因为 0 等待 trivially 不切
+    assert canteens["minghu_xueyi"].windows[0].estimated_wait_for(s) == 270
     assert router.try_switch(s, canteens, exclude_id="minghu_xueyi") is None
 
 
