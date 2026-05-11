@@ -39,27 +39,64 @@ def test_poisson_interval_distribution():
 
 
 # 3. drain 测试：simulation_seconds 截止后不再生成新学生（v1.3 bug 2 回归）
-@pytest.mark.skip(reason="待 A.7 lifecycle + A.8 Coordinator 完成后解封")
 def test_arrival_generator_drains_after_simulation_seconds():
-    """v1.3 bug 2 回归：simulation_seconds 后 _run 应停止生成；
-    已生成学生由 SimPy 调度自然 drain；coordinator.total_arrived 不再增长。
+    """v1.3 bug 2 回归：simulation_seconds 后 ArrivalGenerator 不再 spawn 新学生；
+    coordinator.total_arrived 在 simulation_seconds 后不再增长。
 
-    依赖 A.8 Coordinator 提供 total_arrived 统计与 student_lifecycle 完整路径。
-    现在写测试名占位，A.8 完成后回到本文件解封。
+    用真实 CampusCoordinator 端到端验证（A.8 解封后）。
     """
+    from simulation.coordinator import CampusCoordinator
+
     env = simpy.Environment()
     cfg = {
-        "total_students": 1000,
-        "lunch_alpha": 0.5,
-        "coverage": 0.8,
-        "peak_window_minutes": 60,
-        "simulation_seconds": 60,  # 1 分钟截止
+        "canteens": [{
+            "id": "minghu_xueyi", "display_name": "明湖学一",
+            "campus_position": {"x": 0, "y": 0},
+            "avg_serve_time_seconds": 30,
+            "avg_eat_time_minutes": 15,
+            "arrival_weight": 1.0,
+            "typical_wait_seconds": 200,
+            "floors": [{"floor_id": 1, "windows": {"physical_count": 4, "active_count": 4}, "seats": {"count": 50}}],
+        }],
+        "campus": {
+            "total_students": 1000,
+            "lunch_alpha": 0.5,
+            "coverage": 0.8,
+            "peak_window_minutes": 60,
+            "peak_beta": 1.5,
+            "simulation_seconds": 60,  # 1 分钟截止
+            "entrance_position": {"x": 0, "y": 0},
+            "walking_speed_mps": 1.4,
+            "walking_time_seconds": {},
+            "entrance_walk_seconds": {"minghu_xueyi": 5},
+        },
+        "router": {
+            "information_mode": "local_estimate",
+            "patience_mean_seconds": 180,
+            "patience_std_seconds": 60,
+            "patience_min_seconds": 30,
+            "switch_improvement_ratio": 1.3,
+            "max_switches_per_student": 2,
+            "rng_seed": 42,
+        },
     }
-    # coordinator = make_coord(env, cfg)
-    # env.run(until=120)  # 跑 2 分钟
-    # arrivals_at_60 = coordinator.snapshot_at_time(60).total_arrived
-    # arrivals_at_120 = coordinator.total_arrived
-    # assert arrivals_at_120 == arrivals_at_60
+    rng = random.Random(42)
+    coordinator = CampusCoordinator(env, cfg, rng)
+
+    # 推到 simulation_seconds（60s）
+    env.run(until=60)
+    arrivals_at_60 = coordinator.total_arrived
+
+    # 推到 120s（远超 simulation_seconds）
+    env.run(until=120)
+    arrivals_at_120 = coordinator.total_arrived
+
+    # 截止后 coordinator.total_arrived 不再增长
+    assert arrivals_at_120 == arrivals_at_60, (
+        f"截止后不该再 spawn：60s 时 {arrivals_at_60}，120s 时 {arrivals_at_120}"
+    )
+    # 至少应该 spawn 过几个（确认测试不是 trivial）
+    assert arrivals_at_60 > 0, f"60s 内应至少 spawn 1 个学生，实际 {arrivals_at_60}"
 
 
 # 4. v1.3 bug 2 边界回归：env.now >= stop_after 时不再 spawn 新学生
