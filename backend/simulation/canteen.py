@@ -22,6 +22,11 @@ class Window:
         return len(self.waiting_students)
 
     @property
+    def queue(self) -> list:
+        """Phase 2 兼容别名：旧 SimulationEngine 测试读取 window.queue。"""
+        return self.waiting_students
+
+    @property
     def queue_load(self) -> int:
         # 与 Phase 2 queue_sim.py:14 queue_load() 语义一致：正在打饭的学生也算压力
         return self.resource.count + len(self.waiting_students)
@@ -59,6 +64,11 @@ class Seat:
     floor_id: int                                    # v1.3 新增
     student: Optional["Student"] = None
     eat_end_time: float = 0.0   # 绝对时刻；前端按 current_time 算 remaining_time
+
+    @property
+    def status(self) -> str:
+        """Phase 2 兼容字段：旧前端与测试使用 occupied/empty。"""
+        return "occupied" if self.student else "empty"
 
 
 @dataclass

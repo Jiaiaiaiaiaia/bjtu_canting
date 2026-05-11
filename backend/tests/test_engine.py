@@ -22,6 +22,11 @@ def engine(basic_config):
 
 
 class TestInitialState:
+    def test_wraps_single_canteen_coordinator(self, engine):
+        """A.9.1: SimulationEngine 应作为单食堂 CampusCoordinator 兼容门面。"""
+        assert hasattr(engine, 'coordinator')
+        assert list(engine.coordinator.canteens.keys()) == ['single']
+
     def test_counters_zero_before_start(self, engine):
         assert engine.total_arrived == 0
         assert engine.total_served == 0
