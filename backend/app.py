@@ -9,6 +9,7 @@ from flask_cors import CORS
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from api import api_bp, init_db  # noqa: E402
+from api.campus_routes import campus_bp  # noqa: E402
 
 
 def create_app():
@@ -22,6 +23,7 @@ def create_app():
     CORS(app)
     init_db()
     app.register_blueprint(api_bp)
+    app.register_blueprint(campus_bp)
 
     @app.route('/')
     def index():

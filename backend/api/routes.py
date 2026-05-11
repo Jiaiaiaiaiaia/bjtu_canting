@@ -6,6 +6,7 @@ import sqlite3
 from flask import Blueprint, jsonify, request
 
 from simulation import SimulationEngine
+from .db_migrate import migrate
 
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -18,7 +19,9 @@ DB_PATH = os.path.join(
 
 # 单仿真会话：课程实训演示场景下仅需一个活跃引擎
 _session = {
+    'mode': None,
     'engine': None,
+    'coordinator': None,
     'config_id': None,
     'is_running': False,
     'snapshot_buffer': [],
@@ -42,6 +45,8 @@ def init_db():
                         avg_eat_time REAL NOT NULL,
                         arrival_rate REAL NOT NULL,
                         total_time INTEGER NOT NULL,
+                        mode TEXT DEFAULT 'single',
+                        campus_config_json TEXT,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )''')
         c.execute('''CREATE TABLE IF NOT EXISTS simulation_snapshot (
@@ -58,6 +63,7 @@ def init_db():
                         FOREIGN KEY (config_id) REFERENCES simulation_config (id)
                     )''')
         conn.commit()
+    migrate(DB_PATH)
 
 
 def _validate_config(config):
@@ -87,6 +93,9 @@ def _flush_snapshots():
     buf = _session['snapshot_buffer']
     if not buf:
         return
+    single_snapshots = [s for s in buf if 'queue_details' in s]
+    if not single_snapshots:
+        return
     with sqlite3.connect(DB_PATH) as conn:
         conn.executemany(
             '''INSERT INTO simulation_snapshot
@@ -95,14 +104,18 @@ def _flush_snapshots():
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             [(s['config_id'], s['current_time'], s['total_arrived'], s['total_served'],
               s['total_in_queue'], s['total_eating'], s['empty_seats'],
-              json.dumps(s['queue_details'], ensure_ascii=False), s['event_type']) for s in buf]
+              json.dumps(s['queue_details'], ensure_ascii=False), s['event_type'])
+             for s in single_snapshots]
         )
         conn.commit()
-    buf.clear()
+    _session['snapshot_buffer'] = [s for s in buf if 'queue_details' not in s]
 
 
 @api_bp.post('/config')
 def submit_config():
+    if _session.get('mode') not in (None, 'single'):
+        return jsonify({'error': '切换模式前请先 reset 当前仿真'}), 400
+
     payload = request.get_json(silent=True) or {}
     error = _validate_config(payload)
     if error:
@@ -120,19 +133,28 @@ def submit_config():
     with sqlite3.connect(DB_PATH) as conn:
         cur = conn.execute(
             '''INSERT INTO simulation_config
-               (window_count, seat_count, avg_serve_time, avg_eat_time, arrival_rate, total_time)
-               VALUES (?, ?, ?, ?, ?, ?)''',
+               (window_count, seat_count, avg_serve_time, avg_eat_time,
+                arrival_rate, total_time, mode)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
             (config['window_count'], config['seat_count'], config['avg_serve_time'],
-             config['avg_eat_time'], config['arrival_rate'], config['total_time'])
+             config['avg_eat_time'], config['arrival_rate'], config['total_time'],
+             'single')
         )
         config_id = cur.lastrowid
         conn.commit()
 
+    _session['mode'] = 'single'
     _session['engine'] = SimulationEngine(config, config_id=config_id)
+    _session['coordinator'] = None
     _session['config_id'] = config_id
     _session['is_running'] = False
     _session['snapshot_buffer'] = []
-    return jsonify({'message': '配置已保存', 'config_id': config_id, 'config': config})
+    return jsonify({
+        'message': '配置已保存',
+        'mode': 'single',
+        'config_id': config_id,
+        'config': config,
+    })
 
 
 @api_bp.post('/simulation/start')
@@ -143,10 +165,15 @@ def start_simulation():
     if engine._is_started:
         # 防止重复 start 再次预生成到达事件，污染已有队列
         _session['is_running'] = True
-        return jsonify({'message': '仿真已在运行', 'status': 'running', 'already_started': True})
+        return jsonify({
+            'message': '仿真已在运行',
+            'mode': 'single',
+            'status': 'running',
+            'already_started': True,
+        })
     engine.start()
     _session['is_running'] = True
-    return jsonify({'message': '仿真已启动', 'status': 'running'})
+    return jsonify({'message': '仿真已启动', 'mode': 'single', 'status': 'running'})
 
 
 @api_bp.get('/simulation/step')
@@ -174,8 +201,13 @@ def step_simulation():
 def simulation_status():
     engine = _session['engine']
     if engine is None:
-        return jsonify({'is_running': False, 'initialized': False})
+        return jsonify({
+            'mode': _session.get('mode'),
+            'is_running': False,
+            'initialized': False,
+        })
     return jsonify({
+        'mode': 'single',
         'is_running': _session['is_running'],
         'initialized': True,
         'current_time': engine.current_time,
@@ -229,7 +261,9 @@ def finish_simulation():
 @api_bp.post('/simulation/reset')
 def reset_simulation():
     _flush_snapshots()
+    _session['mode'] = None
     _session['engine'] = None
+    _session['coordinator'] = None
     _session['config_id'] = None
     _session['is_running'] = False
     _session['snapshot_buffer'] = []
