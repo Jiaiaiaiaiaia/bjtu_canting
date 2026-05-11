@@ -3,7 +3,7 @@
 接 Canteen / Campus / Router / ArrivalGenerator / CampusStats / student_lifecycle，
 为校园模式提供端到端骨架（共享时钟 + 钩子 + snapshot）。
 
-单食堂模式不使用此类（SimulationEngine 兼容门面继续走 Phase 2 路径）。
+SimulationEngine 单食堂兼容门面也会用只含一个 Canteen 的 CampusCoordinator。
 """
 import random
 import simpy
@@ -21,10 +21,7 @@ if TYPE_CHECKING:
 
 
 class CampusCoordinator:
-    """校园模式协调器：管理 N 个 Canteen + 调度共享时钟 + 提供两种运行模式。
-
-    单食堂模式不使用此类（SimulationEngine 兼容门面继续走 Phase 2 路径）。
-    """
+    """管理 N 个 Canteen + 调度共享时钟；N=1 时服务单食堂兼容门面。"""
 
     def __init__(self, env: simpy.Environment, config: dict, rng: random.Random):
         self.env = env

@@ -10,6 +10,7 @@ import simpy
 from simpy.core import EmptySchedule
 
 from .coordinator import CampusCoordinator
+from .student import Student
 
 
 class SimulationEngine:
@@ -26,6 +27,7 @@ class SimulationEngine:
         self.total_time = float(config["total_time"]) * 60
         self._rng = random.Random(rng_seed)
         self._env = simpy.Environment()
+        self._planned_students: list[Student] = []
         self.coordinator = CampusCoordinator(
             self._env,
             self._to_single_canteen_config(config),
@@ -37,8 +39,6 @@ class SimulationEngine:
         self.seats = self._canteen.seats
         self.waiting_queue = self._canteen.seat_waiting_students
 
-        self.event_queue = []
-        self.students = []
         self.history = []
         self.peak_queue_length = 0
         self.peak_total_in_queue = 0
@@ -46,6 +46,20 @@ class SimulationEngine:
         self._is_ended = False
 
     # ------------------------------------------------------------------ 兼容属性
+    @property
+    def students(self):
+        """Phase 2 兼容：start() 后暴露可索引的真实 Student 对象列表。"""
+        return self._planned_students if self._is_started else []
+
+    @property
+    def event_queue(self):
+        """Phase 2 兼容：暴露 SimPy 待调度事件，避免旧代码拿到 None 占位。"""
+        if not self._is_started or self._is_ended:
+            return []
+        # SimPy 4.x Environment._queue item shape is (time, priority, eid, event).
+        # Keep this small private-field bridge only for the old Phase 2 event_queue contract.
+        return [item[3] for item in self._env._queue]
+
     @property
     def current_time(self):
         return self._env.now
@@ -94,6 +108,7 @@ class SimulationEngine:
                 "walking_speed_mps": 1.4,
                 "walking_time_seconds": {},
                 "entrance_walk_seconds": {self.SINGLE_CANTEEN_ID: 0.0},
+                "_planned_students": self._planned_students,
             },
             "router": {
                 "information_mode": "local_estimate",
@@ -115,8 +130,11 @@ class SimulationEngine:
             1,
             int(float(self.config["arrival_rate"]) * float(self.config["total_time"]) * 3) + 100,
         )
-        self.students = [None] * planned_count
-        self.event_queue = [None] * planned_count
+        if not self._planned_students:
+            self._planned_students.extend(
+                Student(id=i, state="arriving")
+                for i in range(planned_count)
+            )
 
     def step(self):
         if not self._is_started:
@@ -124,20 +142,71 @@ class SimulationEngine:
         if self._is_ended:
             return self._build_state("end", is_ended=True)
 
-        try:
-            self._env.step()
-        except EmptySchedule:
-            self._is_ended = True
-            self.event_queue = []
-            return self._build_state("end", is_ended=True)
-
-        is_ended = self._env.peek() == float("inf")
-        state = self._build_state("step", is_ended=is_ended)
+        before = self._semantic_metrics()
+        after, is_ended = self._advance_until_visible_change(before)
+        event_type = self._infer_event_type(before, after, is_ended)
+        state = self._build_state(event_type, is_ended=is_ended)
         self.history.append(self._compact_snapshot(state))
         if is_ended:
             self._is_ended = True
-            self.event_queue = []
         return state
+
+    def _advance_until_visible_change(self, before):
+        """把多个 SimPy 微事件合并成一个 Phase 2 语义 step。
+
+        SimPy 会把 process 启动、timeout(0)、resource grant 等拆成多个内部事件；
+        前端和旧 API 需要的是 arrival / service_end / eat_end 这种可见状态变化。
+        """
+        try:
+            while True:
+                self._env.step()
+                after = self._semantic_metrics()
+                if after != before:
+                    self._drain_current_time_micro_events()
+                    return self._semantic_metrics(), self._env.peek() == float("inf")
+                if self._env.peek() == float("inf"):
+                    return after, True
+        except EmptySchedule:
+            return self._semantic_metrics(), True
+
+    def _drain_current_time_micro_events(self):
+        """消化同一时间戳上的零时长内部事件，让状态停在稳定可渲染点。"""
+        current = self.current_time
+        while self._env.peek() == current:
+            try:
+                self._env.step()
+            except EmptySchedule:
+                break
+
+    def _semantic_metrics(self):
+        snap = self._canteen.snapshot()
+        return {
+            "total_arrived": self.total_arrived,
+            "total_served": self.total_served,
+            "total_in_queue": snap["total_in_queue"],
+            "total_eating": snap["total_eating"],
+            "empty_seats": snap["empty_seats"],
+            "window_served": tuple(w.total_served for w in self.windows),
+            "students": tuple(
+                (s["id"], s["position"], s["position_detail"])
+                for s in snap["students"]
+            ),
+        }
+
+    def _infer_event_type(self, before, after, is_ended):
+        if after["total_served"] > before["total_served"]:
+            return "eat_end"
+        if (
+            sum(after["window_served"]) > sum(before["window_served"])
+            or after["total_eating"] != before["total_eating"]
+            or after["empty_seats"] != before["empty_seats"]
+        ):
+            return "service_end"
+        if after["total_arrived"] > before["total_arrived"]:
+            return "arrival"
+        if is_ended:
+            return "end"
+        return "step"
 
     # ------------------------------------------------------------------ 状态与快照
     def _build_state(self, event_type, is_ended=False):

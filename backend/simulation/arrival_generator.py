@@ -3,7 +3,7 @@
 按 Poisson 过程从校园入口生成学生，交给 student_lifecycle 处理。
 simulation_seconds 后停止生成新学生；已生成学生由 SimPy 自然 drain。
 
-单食堂模式不使用本类；SimulationEngine 兼容门面继续走 Phase 2 原有路径。
+CampusCoordinator 在校园联合模式和 SimulationEngine 单食堂兼容门面中都会使用本类。
 """
 import random
 from typing import TYPE_CHECKING
@@ -19,11 +19,11 @@ from .student import Student
 
 
 class ArrivalGenerator:
-    """校园模式下的学生工厂：按 Poisson 过程从校园入口生成学生，
-    交给 student_lifecycle 处理。simulation_seconds 后停止生成。
+    """按 Poisson 过程从校园入口生成学生，交给 student_lifecycle 处理。
 
-    单食堂模式不使用本类；SimulationEngine 兼容门面继续走 Phase 2 原有的
-    _generate_arrival_events 路径。
+    SimulationEngine 兼容门面会通过 ``_planned_students`` 注入一组预创建的
+    Student 对象，以保留 Phase 2 中 ``engine.students`` 可索引真实对象的外部契约。
+    校园联合模式不传该字段，仍按需创建学生。
     """
 
     def __init__(self, env, campus_config, canteens, router,
@@ -61,11 +61,19 @@ class ArrivalGenerator:
         return N * alpha * coverage / T
 
     def _spawn_student(self) -> Student:
-        student = Student(
-            id=self._next_student_id,
-            state="arriving",
-            patience_threshold=self.router.sample_patience(),
-        )
+        planned_students = self.config.get("_planned_students")
+        if planned_students is not None and self._next_student_id < len(planned_students):
+            student = planned_students[self._next_student_id]
+            student.state = "arriving"
+            student.patience_threshold = self.router.sample_patience()
+        else:
+            student = Student(
+                id=self._next_student_id,
+                state="arriving",
+                patience_threshold=self.router.sample_patience(),
+            )
+            if planned_students is not None:
+                planned_students.append(student)
         self._next_student_id += 1
         return student
 
