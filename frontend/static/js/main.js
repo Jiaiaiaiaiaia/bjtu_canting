@@ -35,6 +35,11 @@ function showPage(name) {
 // ================================== 参数配置
 const configForm = document.getElementById('config-form');
 const resetBtn = document.getElementById('reset-btn');
+const modeRadios = document.querySelectorAll('input[name="simulation_mode"]');
+const singleModeForm = document.getElementById('single-mode-form');
+const campusModeForm = document.getElementById('campus-mode-form');
+const campusConfigJson = document.getElementById('campus-config-json');
+const DEFAULT_CAMPUS_CONFIG = campusConfigJson ? campusConfigJson.value : '';
 
 const DEFAULTS = {
     window_count: 6,
@@ -50,24 +55,33 @@ resetBtn.addEventListener('click', () => {
         const input = document.getElementById(k);
         if (input) input.value = v;
     });
+    if (campusConfigJson) campusConfigJson.value = DEFAULT_CAMPUS_CONFIG;
+    const singleModeRadio = document.getElementById('simulation-mode-single');
+    if (singleModeRadio) singleModeRadio.checked = true;
+    syncModeForms();
 });
+
+modeRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+        syncModeForms();
+    });
+});
+
+syncModeForms();
 
 configForm.addEventListener('submit', async e => {
     e.preventDefault();
-    state.mode = 'single';
-    const config = {
-        window_count: parseInt(document.getElementById('window_count').value, 10),
-        seat_count: parseInt(document.getElementById('seat_count').value, 10),
-        avg_serve_time: parseFloat(document.getElementById('avg_serve_time').value),
-        avg_eat_time: parseFloat(document.getElementById('avg_eat_time').value),
-        arrival_rate: parseFloat(document.getElementById('arrival_rate').value),
-        total_time: parseInt(document.getElementById('total_time').value, 10),
-    };
+    const nextMode = selectedMode();
 
     try {
-        const apiBase = currentSimulationBase();
-        await apiPost(`${apiBase}/reset`);
-        const configRes = await apiPost('/config', config);
+        const payload = nextMode === 'campus'
+            ? readCampusConfig()
+            : readSingleConfig();
+        const apiBase = nextMode === 'campus' ? '/campus' : '/simulation';
+        await resetActiveSession();
+        const configRes = nextMode === 'campus'
+            ? await apiPost('/campus/config', payload)
+            : await apiPost('/config', payload);
         if (!configRes.ok) {
             alert(configRes.data.error || '参数提交失败');
             return;
@@ -77,14 +91,59 @@ configForm.addEventListener('submit', async e => {
             alert(startRes.data.error || '仿真启动失败');
             return;
         }
+        state.mode = nextMode;
         resetSimulationState();
+        applyViewState();
         showPage('simulation');
         startLoop();
     } catch (err) {
         console.error(err);
-        alert('无法连接后端服务，请检查 Flask 是否启动');
+        alert(err.message || '无法连接后端服务，请检查 Flask 是否启动');
     }
 });
+
+function selectedMode() {
+    const checked = document.querySelector('input[name="simulation_mode"]:checked');
+    return checked ? checked.value : 'single';
+}
+
+function syncModeForms() {
+    const isCampus = selectedMode() === 'campus';
+    if (singleModeForm) singleModeForm.hidden = isCampus;
+    if (campusModeForm) campusModeForm.hidden = !isCampus;
+}
+
+function readSingleConfig() {
+    return {
+        window_count: parseInt(document.getElementById('window_count').value, 10),
+        seat_count: parseInt(document.getElementById('seat_count').value, 10),
+        avg_serve_time: parseFloat(document.getElementById('avg_serve_time').value),
+        avg_eat_time: parseFloat(document.getElementById('avg_eat_time').value),
+        arrival_rate: parseFloat(document.getElementById('arrival_rate').value),
+        total_time: parseInt(document.getElementById('total_time').value, 10),
+    };
+}
+
+function readCampusConfig() {
+    try {
+        return JSON.parse(campusConfigJson.value);
+    } catch (err) {
+        throw new Error('校园联合配置 JSON 格式错误');
+    }
+}
+
+async function resetActiveSession() {
+    try {
+        const statusRes = await fetch(`${API_BASE}/simulation/status`);
+        const status = statusRes.ok ? await statusRes.json() : {};
+        const resetPath = status.mode === 'campus'
+            ? '/campus/reset'
+            : '/simulation/reset';
+        await apiPost(resetPath);
+    } catch (err) {
+        await apiPost('/simulation/reset');
+    }
+}
 
 // ================================== 仿真运行控制
 const canvas = document.getElementById('canteen-canvas');
@@ -93,7 +152,25 @@ const playPauseBtn = document.getElementById('play-pause-btn');
 const endBtn = document.getElementById('end-btn');
 const speedRange = document.getElementById('speed-range');
 const speedLabel = document.getElementById('speed-label');
+const viewSwitcher = document.getElementById('view-switcher');
+const campusOverviewPanel = document.getElementById('campus-overview-panel');
+const canteenSwitcher = document.getElementById('canteen-switcher');
+const campusMapContainer = document.getElementById('campus-map-container');
+const floorTabs = document.getElementById('floor-tabs');
+const infoPanel = document.querySelector('.info-panel');
 const SPEED_MAP = [1, 2, 5, 10];
+
+if (viewSwitcher) {
+    viewSwitcher.querySelectorAll('button[data-view]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            state.view = btn.dataset.view;
+            applyViewState();
+            if (state.lastData && window.CanteenApp.refreshCampusView) {
+                window.CanteenApp.refreshCampusView(state.lastData);
+            }
+        });
+    });
+}
 
 playPauseBtn.addEventListener('click', () => {
     if (playPauseBtn.textContent === '开始' || playPauseBtn.textContent === '继续') {
@@ -160,6 +237,7 @@ function resetSimulationState() {
     document.getElementById('empty-seats').textContent = '0';
     document.getElementById('avg-waiting').textContent = '0.0 s';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    applyViewState();
 }
 
 function startLoop() {
@@ -207,6 +285,7 @@ async function dispatchStep() {
             const activeCanteen = activeCanteenSnapshot(data);
             if (activeCanteen) drawCanteen(activeCanteen);
         }
+        applyViewState();
     } else {
         updateInfoPanel(data);
         drawCanteen(data);
@@ -216,6 +295,23 @@ async function dispatchStep() {
 
 function currentSimulationBase() {
     return state.mode === 'campus' ? '/campus' : '/simulation';
+}
+
+function applyViewState() {
+    const isCampusMode = state.mode === 'campus';
+    const isCampusView = isCampusMode && state.view === 'campus';
+    if (viewSwitcher) viewSwitcher.hidden = !isCampusMode;
+    if (campusOverviewPanel) campusOverviewPanel.hidden = !isCampusView;
+    if (canteenSwitcher) canteenSwitcher.hidden = !isCampusMode || isCampusView;
+    if (campusMapContainer) campusMapContainer.hidden = !isCampusView;
+    if (canvas) canvas.hidden = isCampusView;
+    if (floorTabs) floorTabs.hidden = !isCampusMode || isCampusView;
+    if (infoPanel) infoPanel.hidden = isCampusView;
+    if (viewSwitcher) {
+        viewSwitcher.querySelectorAll('button[data-view]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.view === state.view);
+        });
+    }
 }
 
 function activeCanteenSnapshot(data) {
@@ -662,3 +758,5 @@ window.CanteenApp.drawStudentDots = drawStudentDots;
 window.CanteenApp.updateInfoPanel = updateInfoPanel;
 window.CanteenApp.renderCharts = renderCharts;
 window.CanteenApp.disposeCharts = disposeCharts;
+window.CanteenApp.applyViewState = applyViewState;
+window.CanteenApp.syncModeForms = syncModeForms;

@@ -31,30 +31,116 @@
                 <h2>仿真参数配置</h2>
                 <p class="page-subtitle">配置完后点击开始仿真，自动跳转到仿真运行页</p>
                 <form id="config-form" class="config-form">
-                    <div class="form-group">
-                        <label for="window_count">窗口数量</label>
-                        <input type="number" id="window_count" name="window_count" value="6" min="1" max="20">
+                    <fieldset class="mode-selector">
+                        <legend>运行模式</legend>
+                        <label class="mode-option" for="simulation-mode-single">
+                            <input type="radio" id="simulation-mode-single" name="simulation_mode" value="single" checked>
+                            单食堂模式
+                        </label>
+                        <label class="mode-option" for="simulation-mode-campus">
+                            <input type="radio" id="simulation-mode-campus" name="simulation_mode" value="campus">
+                            校园联合模式
+                        </label>
+                    </fieldset>
+
+                    <div id="single-mode-form" class="single-mode-form">
+                        <div class="form-group">
+                            <label for="window_count">窗口数量</label>
+                            <input type="number" id="window_count" name="window_count" value="6" min="1" max="20">
+                        </div>
+                        <div class="form-group">
+                            <label for="seat_count">总座位数</label>
+                            <input type="number" id="seat_count" name="seat_count" value="200" min="10" max="1000">
+                        </div>
+                        <div class="form-group">
+                            <label for="avg_serve_time">平均打饭时长（秒）</label>
+                            <input type="number" id="avg_serve_time" name="avg_serve_time" value="30" min="5" max="300" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label for="avg_eat_time">平均就餐时长（分钟）</label>
+                            <input type="number" id="avg_eat_time" name="avg_eat_time" value="15" min="1" max="60" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label for="arrival_rate">每分钟到达人数</label>
+                            <input type="number" id="arrival_rate" name="arrival_rate" value="5" min="0.1" max="50" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label for="total_time">仿真总时长（分钟）</label>
+                            <input type="number" id="total_time" name="total_time" value="60" min="5" max="240">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="seat_count">总座位数</label>
-                        <input type="number" id="seat_count" name="seat_count" value="200" min="10" max="1000">
+
+                    <div id="campus-mode-form" hidden class="campus-config-panel">
+                        <label for="campus-config-json">校园联合配置 JSON</label>
+                        <textarea id="campus-config-json" spellcheck="false">{
+  "campus": {
+    "total_students": 180,
+    "lunch_alpha": 1.0,
+    "coverage": 0.65,
+    "peak_window_minutes": 20,
+    "peak_beta": 1.5,
+    "simulation_seconds": 180,
+    "entrance_position": { "x": 0, "y": 0 },
+    "walking_speed_mps": 1.4,
+    "walking_time_seconds": {},
+    "entrance_walk_seconds": {
+      "minghu_xueyi": 12,
+      "xuehuo": 18,
+      "xuesi": 24
+    }
+  },
+  "canteens": [
+    {
+      "id": "minghu_xueyi",
+      "display_name": "明湖学一",
+      "campus_position": { "x": 90, "y": 90 },
+      "avg_serve_time_seconds": 25,
+      "avg_eat_time_minutes": 12,
+      "arrival_weight": 1.0,
+      "typical_wait_seconds": 80,
+      "floors": [
+        { "floor_id": 1, "windows": { "physical_count": 4, "active_count": 3 }, "seats": { "count": 80 } },
+        { "floor_id": 2, "windows": { "physical_count": 3, "active_count": 2 }, "seats": { "count": 70 } }
+      ]
+    },
+    {
+      "id": "xuehuo",
+      "display_name": "学活",
+      "campus_position": { "x": 240, "y": 180 },
+      "avg_serve_time_seconds": 28,
+      "avg_eat_time_minutes": 12,
+      "arrival_weight": 1.0,
+      "typical_wait_seconds": 90,
+      "floors": [
+        { "floor_id": 1, "windows": { "physical_count": 5, "active_count": 4 }, "seats": { "count": 120 } }
+      ]
+    },
+    {
+      "id": "xuesi",
+      "display_name": "学四",
+      "campus_position": { "x": 360, "y": 120 },
+      "avg_serve_time_seconds": 30,
+      "avg_eat_time_minutes": 12,
+      "arrival_weight": 1.0,
+      "typical_wait_seconds": 100,
+      "floors": [
+        { "floor_id": 1, "windows": { "physical_count": 3, "active_count": 2 }, "seats": { "count": 70 } },
+        { "floor_id": 2, "windows": { "physical_count": 3, "active_count": 2 }, "seats": { "count": 70 } }
+      ]
+    }
+  ],
+  "router": {
+    "information_mode": "local_estimate",
+    "patience_mean_seconds": 180,
+    "patience_std_seconds": 30,
+    "patience_min_seconds": 30,
+    "switch_improvement_ratio": 1.3,
+    "max_switches_per_student": 2,
+    "rng_seed": 42
+  }
+}</textarea>
                     </div>
-                    <div class="form-group">
-                        <label for="avg_serve_time">平均打饭时长（秒）</label>
-                        <input type="number" id="avg_serve_time" name="avg_serve_time" value="30" min="5" max="300" step="0.1">
-                    </div>
-                    <div class="form-group">
-                        <label for="avg_eat_time">平均就餐时长（分钟）</label>
-                        <input type="number" id="avg_eat_time" name="avg_eat_time" value="15" min="1" max="60" step="0.1">
-                    </div>
-                    <div class="form-group">
-                        <label for="arrival_rate">每分钟到达人数</label>
-                        <input type="number" id="arrival_rate" name="arrival_rate" value="5" min="0.1" max="50" step="0.1">
-                    </div>
-                    <div class="form-group">
-                        <label for="total_time">仿真总时长（分钟）</label>
-                        <input type="number" id="total_time" name="total_time" value="60" min="5" max="240">
-                    </div>
+
                     <div class="form-buttons">
                         <button type="button" id="reset-btn">恢复默认值</button>
                         <button type="submit" id="start-btn">开始仿真</button>
@@ -67,6 +153,25 @@
         <section id="simulation-page" class="page">
             <h2>仿真运行</h2>
             <div class="simulation-container">
+                <div class="simulation-toolbar">
+                    <div id="view-switcher" hidden class="view-switcher">
+                        <button type="button" data-view="campus">校园地图</button>
+                        <button type="button" data-view="canteen" class="active">食堂详情</button>
+                    </div>
+                    <div id="canteen-switcher" hidden class="canteen-switcher">
+                        <label for="active-canteen-select">当前查看食堂</label>
+                        <select id="active-canteen-select"></select>
+                    </div>
+                </div>
+
+                <div id="campus-overview-panel" hidden class="campus-overview-panel">
+                    <div class="info-item"><span class="label">校园到达</span><span id="campus-total-arrived">0</span></div>
+                    <div class="info-item"><span class="label">校园完成</span><span id="campus-total-served">0</span></div>
+                    <div class="info-item"><span class="label">路上人数</span><span id="campus-in-transit">0</span></div>
+                    <div class="info-item"><span class="label">切换次数</span><span id="campus-total-switches">0</span></div>
+                    <div class="info-item info-item-highlight"><span class="label">校园平均等待</span><span id="campus-avg-waiting">0.0 s</span></div>
+                </div>
+
                 <div class="info-panel">
                     <div class="info-item"><span class="label">当前时间</span><span id="current-time">00:00</span></div>
                     <div class="info-item"><span class="label">累计到达</span><span id="total-arrived">0</span></div>

@@ -117,6 +117,7 @@ def test_campus_map_renders_markers_heat_and_transit_dots():
               activeFloorId: 2,
               lastData: 'snapshot',
             }},
+            applyViewState() {{ global.applyCount = (global.applyCount || 0) + 1; }},
             refreshCampusView(snapshot) {{ global.refreshCalledWith = snapshot; }},
           }},
         }};
@@ -137,6 +138,7 @@ def test_campus_map_renders_markers_heat_and_transit_dots():
           clickedView: window.CanteenApp.state.view,
           clickedCanteen: window.CanteenApp.state.activeCanteenId,
           clickedFloor: window.CanteenApp.state.activeFloorId,
+          applyCalled: global.applyCount || 0,
           refreshCalled: global.refreshCalledWith === 'snapshot',
         }}));
     """)
@@ -152,5 +154,83 @@ def test_campus_map_renders_markers_heat_and_transit_dots():
         'clickedView': 'canteen',
         'clickedCanteen': 'xuehuo',
         'clickedFloor': None,
+        'applyCalled': 1,
         'refreshCalled': True,
     }
+
+
+def test_campus_map_rebuilds_markers_when_canteen_signature_changes():
+    assert CAMPUS_MAP_JS.exists()
+    snapshot_a = {
+        'mode': 'campus',
+        'canteens': {
+            'a': {
+                'display_name': 'A',
+                'campus_position': {'x': 10, 'y': 20},
+                'windows': [],
+                'waiting_queue_length': 0,
+            },
+            'b': {
+                'display_name': 'B',
+                'campus_position': {'x': 30, 'y': 40},
+                'windows': [],
+                'waiting_queue_length': 0,
+            },
+        },
+        'in_transit': [],
+    }
+    snapshot_b = {
+        'mode': 'campus',
+        'canteens': {
+            'c': {
+                'display_name': 'C',
+                'campus_position': {'x': 50, 'y': 60},
+                'windows': [],
+                'waiting_queue_length': 0,
+            },
+        },
+        'in_transit': [],
+    }
+    script = textwrap.dedent(f"""
+        const fs = require('fs');
+        const vm = require('vm');
+        function makeEl(tag) {{
+          return {{
+            tag,
+            attrs: {{}},
+            children: [],
+            textContent: '',
+            events: {{}},
+            setAttribute(name, value) {{ this.attrs[name] = String(value); }},
+            getAttribute(name) {{ return this.attrs[name]; }},
+            appendChild(child) {{ this.children.push(child); return child; }},
+            addEventListener(name, handler) {{ this.events[name] = handler; }},
+          }};
+        }}
+        const svg = makeEl('svg');
+        global.document = {{
+          getElementById(id) {{ return id === 'campus-map-svg' ? svg : null; }},
+          createElementNS(ns, tag) {{ return makeEl(tag); }},
+          querySelector(selector) {{
+            const match = selector.match(/data-cid="([^"]+)"/);
+            if (!match) return null;
+            const marker = svg.children.find(el =>
+              el.tag === 'g' &&
+              el.attrs.class === 'canteen-marker' &&
+              el.attrs['data-cid'] === match[1]
+            );
+            return marker ? marker.children.find(el => el.tag === 'rect') : null;
+          }},
+        }};
+        global.window = {{ CanteenApp: {{ state: {{}} }} }};
+        vm.runInThisContext(fs.readFileSync({json.dumps(str(CAMPUS_MAP_JS))}, 'utf8'));
+        window.CanteenApp.renderCampusMap({json.dumps(snapshot_a, ensure_ascii=False)});
+        window.CanteenApp.renderCampusMap({json.dumps(snapshot_b, ensure_ascii=False)});
+        console.log(JSON.stringify(
+          svg.children
+            .filter(el => el.attrs.class === 'canteen-marker')
+            .map(el => el.attrs['data-cid'])
+        ));
+    """)
+
+    assert run_node(script) == ['c']

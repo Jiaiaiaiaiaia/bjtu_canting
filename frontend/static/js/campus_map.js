@@ -3,6 +3,7 @@
     const App = window.CanteenApp = window.CanteenApp || {};
     const SVG_NS = 'http://www.w3.org/2000/svg';
     let svgInited = false;
+    let lastMarkerSignature = null;
 
     function createSvgEl(tag, attrs) {
         const el = document.createElementNS(SVG_NS, tag);
@@ -25,6 +26,34 @@
             svg.appendChild(layer);
         }
         return layer;
+    }
+
+    function markerSignature(canteens) {
+        return Object.entries(canteens || {})
+            .map(([cid, canteen]) => {
+                const pos = canteen.campus_position || {};
+                return [
+                    cid,
+                    canteen.display_name || '',
+                    pos.x ?? '',
+                    pos.y ?? '',
+                ].join(':');
+            })
+            .sort()
+            .join('|');
+    }
+
+    function clearMarkerNodes(svg) {
+        if (!svg) return;
+        if (typeof svg.querySelectorAll === 'function') {
+            svg.querySelectorAll('.canteen-marker').forEach(node => node.remove());
+            return;
+        }
+        if (Array.isArray(svg.children)) {
+            svg.children = svg.children.filter(
+                child => child?.attrs?.class !== 'canteen-marker'
+            );
+        }
     }
 
     function initSvg(canteens) {
@@ -63,12 +92,14 @@
                 App.state.view = 'canteen';
                 App.state.activeCanteenId = cid;
                 App.state.activeFloorId = null;
+                if (App.applyViewState) App.applyViewState();
                 if (App.state.lastData && App.refreshCampusView) {
                     App.refreshCampusView(App.state.lastData);
                 }
             });
             svg.appendChild(g);
         }
+        lastMarkerSignature = markerSignature(canteens);
         svgInited = true;
     }
 
@@ -81,6 +112,11 @@
     function renderCampusMap(snapshot) {
         const svg = ensureSvg();
         if (!svg || !snapshot) return;
+        const signature = markerSignature(snapshot.canteens || {});
+        if (signature !== lastMarkerSignature) {
+            clearMarkerNodes(svg);
+            svgInited = false;
+        }
         if (!svgInited) initSvg(snapshot.canteens || {});
 
         for (const cid in snapshot.canteens || {}) {
