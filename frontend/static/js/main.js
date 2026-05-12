@@ -200,11 +200,12 @@ async function dispatchStep() {
         if (!state.activeCanteenId) {
             state.activeCanteenId = state.canteenOrder[0] || null;
         }
-        updateInfoPanel(campusInfoPanelData(data));
-        const activeCanteen = activeCanteenSnapshot(data);
-        if (activeCanteen) drawCanteen(activeCanteen);
         if (window.CanteenApp.refreshCampusView) {
             window.CanteenApp.refreshCampusView(data);
+        } else {
+            updateInfoPanel(campusInfoPanelData(data));
+            const activeCanteen = activeCanteenSnapshot(data);
+            if (activeCanteen) drawCanteen(activeCanteen);
         }
     } else {
         updateInfoPanel(data);
