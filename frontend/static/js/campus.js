@@ -16,6 +16,7 @@
         if (!sel || canteenSelectBound) return;
         sel.addEventListener('change', e => {
             state().activeCanteenId = e.target.value;
+            state().activeFloorId = null;
             if (state().lastData) refreshCampusView(state().lastData);
         });
         canteenSelectBound = true;

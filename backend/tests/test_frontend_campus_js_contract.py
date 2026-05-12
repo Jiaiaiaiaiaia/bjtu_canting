@@ -182,3 +182,48 @@ def test_campus_js_loads_before_future_campus_dom_exists():
         'hasRefresh': 'function',
         'hasFilter': 'function',
     }
+
+
+def test_canteen_select_change_resets_active_floor():
+    assert CAMPUS_JS.exists()
+    script = textwrap.dedent(f"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const select = {{
+          value: '',
+          children: [],
+          set innerHTML(value) {{ this.children = []; }},
+          appendChild(child) {{ this.children.push(child); }},
+          addEventListener(name, handler) {{ this.handler = handler; }},
+        }};
+        global.window = {{
+          CanteenApp: {{
+            state: {{
+              view: 'canteen',
+              activeCanteenId: 'minghu_xueyi',
+              activeFloorId: 2,
+              lastData: null,
+            }},
+            drawCanteen() {{}},
+            updateInfoPanel() {{}},
+          }},
+        }};
+        global.document = {{
+          getElementById(id) {{ return id === 'active-canteen-select' ? select : null; }},
+          createElement() {{ return {{ value: '', textContent: '' }}; }},
+        }};
+        vm.runInThisContext(fs.readFileSync({json.dumps(str(CAMPUS_JS))}, 'utf8'));
+        window.CanteenApp.fillCanteenSelect(
+          ['minghu_xueyi', 'xuehuo'],
+          {{ minghu_xueyi: {{ display_name: '明湖学一' }}, xuehuo: {{ display_name: '学活' }} }}
+        );
+        select.value = 'xuehuo';
+        select.handler({{ target: select }});
+        console.log(JSON.stringify({{
+          active: window.CanteenApp.state.activeCanteenId,
+          floor: window.CanteenApp.state.activeFloorId,
+        }}));
+    """)
+    result = run_node(script)
+
+    assert result == {'active': 'xuehuo', 'floor': None}
