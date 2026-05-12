@@ -1,0 +1,72 @@
+{
+  "id": "minghu_xueyi",
+  "display_name": "明湖学一食堂",
+  "campus_position": {"x": 120, "y": 80},
+  "entrances": 2,
+  "avg_eat_time_minutes": 15,
+  "avg_serve_time_seconds": 30,
+  "arrival_weight": 1.2,
+  "typical_wait_seconds": 300,
+  "observed_peak_queue": 25,
+  "_TODO_field_research_pending": true,
+  "peak_hours": [
+    {"name": "lunch", "start": "11:30", "end": "13:00", "intensity": 1.0},
+    {"name": "dinner", "start": "17:00", "end": "19:00", "intensity": 0.7}
+  ],
+  "floors": [
+    {
+      "floor_id": 1,
+      "windows": {
+        "physical_count": 6,
+        "active_count": 6,
+        "avg_serve_time_seconds": 30,
+        "by_type": {"rice": 2, "noodle": 2, "specialty": 2},
+        "service_time_notes": "A.11 stub：明湖学一 1F 调研占位，实地复核后回填。"
+      },
+      "seats": {"count": 172, "layout_hint": "estimated 1F dining area"},
+      "layout": {
+        "floor_size": [48, 34],
+        "window_positions": [[6, 3], [10, 3], [14, 3], [18, 3], [22, 3], [26, 3]],
+        "seat_grid_origin": [4, 9],
+        "seat_grid_step": [2, 2]
+      },
+      "notes": "1F：窗口与部分就餐区。"
+    },
+    {
+      "floor_id": 2,
+      "windows": {
+        "physical_count": 13,
+        "active_count": 13,
+        "avg_serve_time_seconds": 30,
+        "by_type": {"rice": 5, "noodle": 3, "specialty": 5},
+        "service_time_notes": "A.11 stub：明湖学一 2F 调研占位，实地复核后回填。"
+      },
+      "seats": {"count": 272, "layout_hint": "estimated 2F dining area"},
+      "layout": {
+        "floor_size": [52, 36],
+        "window_positions": [[5, 3], [8, 3], [11, 3], [14, 3], [17, 3], [20, 3], [23, 3], [26, 3], [29, 3], [32, 3], [35, 3], [38, 3], [41, 3]],
+        "seat_grid_origin": [4, 9],
+        "seat_grid_step": [2, 2]
+      },
+      "notes": "2F：主就餐区与窗口区。"
+    },
+    {
+      "floor_id": 3,
+      "windows": {
+        "physical_count": 14,
+        "active_count": 14,
+        "avg_serve_time_seconds": 30,
+        "by_type": {"rice": 5, "noodle": 4, "specialty": 5},
+        "service_time_notes": "A.11 stub：明湖学一 3F 调研占位，实地复核后回填。"
+      },
+      "seats": {"count": 290, "layout_hint": "estimated 3F dining area"},
+      "layout": {
+        "floor_size": [52, 38],
+        "window_positions": [[5, 3], [8, 3], [11, 3], [14, 3], [17, 3], [20, 3], [23, 3], [26, 3], [29, 3], [32, 3], [35, 3], [38, 3], [41, 3], [44, 3]],
+        "seat_grid_origin": [4, 10],
+        "seat_grid_step": [2, 2]
+      },
+      "notes": "3F：主就餐区与窗口区。"
+    }
+  ]
+}

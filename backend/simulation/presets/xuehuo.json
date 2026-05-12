@@ -1,0 +1,36 @@
+{
+  "id": "xuehuo",
+  "display_name": "学活食堂",
+  "campus_position": {"x": 260, "y": 110},
+  "entrances": 1,
+  "avg_eat_time_minutes": 15,
+  "avg_serve_time_seconds": 32,
+  "arrival_weight": 0.8,
+  "typical_wait_seconds": 240,
+  "observed_peak_queue": 18,
+  "_TODO_field_research_pending": true,
+  "peak_hours": [
+    {"name": "lunch", "start": "11:30", "end": "13:00", "intensity": 1.0},
+    {"name": "dinner", "start": "17:00", "end": "19:00", "intensity": 0.65}
+  ],
+  "floors": [
+    {
+      "floor_id": 1,
+      "windows": {
+        "physical_count": 5,
+        "active_count": 5,
+        "avg_serve_time_seconds": 32,
+        "by_type": {"rice": 2, "noodle": 1, "specialty": 2},
+        "service_time_notes": "A.11 stub：学活食堂待 5/4-5/5 实地调研后回填。"
+      },
+      "seats": {"count": 150, "layout_hint": "placeholder single-floor layout"},
+      "layout": {
+        "floor_size": [38, 28],
+        "window_positions": [[6, 3], [10, 3], [14, 3], [18, 3], [22, 3]],
+        "seat_grid_origin": [4, 9],
+        "seat_grid_step": [2, 2]
+      },
+      "notes": "占位单层：5 窗口 / 150 座，实地调研后回填。"
+    }
+  ]
+}

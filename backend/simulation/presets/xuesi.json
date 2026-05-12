@@ -1,0 +1,54 @@
+{
+  "id": "xuesi",
+  "display_name": "学四食堂",
+  "campus_position": {"x": 80, "y": 210},
+  "entrances": 1,
+  "avg_eat_time_minutes": 15,
+  "avg_serve_time_seconds": 36,
+  "arrival_weight": 1.0,
+  "typical_wait_seconds": 360,
+  "observed_peak_queue": 30,
+  "_TODO_field_research_pending": true,
+  "peak_hours": [
+    {"name": "lunch", "start": "11:30", "end": "13:00", "intensity": 1.0},
+    {"name": "dinner", "start": "17:00", "end": "19:00", "intensity": 0.75}
+  ],
+  "floors": [
+    {
+      "floor_id": 1,
+      "windows": {
+        "physical_count": 9,
+        "active_count": 9,
+        "avg_serve_time_seconds": 36,
+        "by_type": {"rice": 4, "noodle": 2, "specialty": 3},
+        "service_time_notes": "A.11 stub：学四 1F 调研占位，实地复核后回填。"
+      },
+      "seats": {"count": 150, "layout_hint": "estimated 1F dining area"},
+      "layout": {
+        "floor_size": [42, 30],
+        "window_positions": [[5, 3], [9, 3], [13, 3], [17, 3], [21, 3], [25, 3], [29, 3], [33, 3], [37, 3]],
+        "seat_grid_origin": [4, 9],
+        "seat_grid_step": [2, 2]
+      },
+      "notes": "1F：窗口与就餐区。"
+    },
+    {
+      "floor_id": 2,
+      "windows": {
+        "physical_count": 9,
+        "active_count": 9,
+        "avg_serve_time_seconds": 36,
+        "by_type": {"rice": 3, "noodle": 3, "specialty": 3},
+        "service_time_notes": "A.11 stub：二楼面食排队 10 分钟+，需实地复核。"
+      },
+      "seats": {"count": 150, "layout_hint": "estimated 2F dining area"},
+      "layout": {
+        "floor_size": [42, 30],
+        "window_positions": [[5, 3], [9, 3], [13, 3], [17, 3], [21, 3], [25, 3], [29, 3], [33, 3], [37, 3]],
+        "seat_grid_origin": [4, 9],
+        "seat_grid_step": [2, 2]
+      },
+      "notes": "2F：面食窗口高峰排队 10 分钟以上。"
+    }
+  ]
+}

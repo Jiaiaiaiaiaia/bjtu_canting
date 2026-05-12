@@ -1,0 +1,22 @@
+{
+  "total_students": 28000,
+  "lunch_alpha": 0.65,
+  "coverage": 0.65,
+  "peak_window_minutes": 90,
+  "peak_beta": 1.5,
+  "simulation_seconds": 5400,
+  "entrance_position": {"x": 0, "y": 0},
+  "walking_speed_mps": 1.4,
+  "walking_time_seconds": {
+    "minghu_xueyi": {"xuehuo": 150, "xuesi": 90},
+    "xuehuo": {"minghu_xueyi": 150, "xuesi": 200},
+    "xuesi": {"minghu_xueyi": 90, "xuehuo": 200}
+  },
+  "entrance_walk_seconds": {
+    "minghu_xueyi": 90,
+    "xuehuo": 60,
+    "xuesi": 180
+  },
+  "_TODO_field_research_pending": true,
+  "notes": "A.11 stub：校园步行时间与覆盖率待实地调研后回填。"
+}
