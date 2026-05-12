@@ -1,7 +1,8 @@
 // ================================== Campus 楼层 Tab
 (function() {
     const App = window.CanteenApp = window.CanteenApp || {};
-    const lastFloorKeyByCanteen = {};
+    let renderedCanteenId = null;
+    let renderedFloorKey = null;
 
     function renderFloorTabs(canteenView) {
         const container = document.getElementById('floor-tabs');
@@ -15,11 +16,12 @@
         }
 
         const floorKey = floors.map(f => f.floor_id).join(',');
-        if (lastFloorKeyByCanteen[canteenView.id] === floorKey) {
+        if (renderedCanteenId === canteenView.id && renderedFloorKey === floorKey) {
             syncActiveTab(container);
             return;
         }
-        lastFloorKeyByCanteen[canteenView.id] = floorKey;
+        renderedCanteenId = canteenView.id;
+        renderedFloorKey = floorKey;
 
         container.innerHTML = '';
         container.appendChild(makeTab(null, '全楼层'));

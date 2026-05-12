@@ -136,3 +136,67 @@ def test_floor_tabs_single_floor_clears_tabs_and_filter():
     result = run_node(script)
 
     assert result == {'childCount': 0, 'activeFloor': None}
+
+
+def test_floor_tabs_rebuilds_when_switching_back_to_previous_canteen():
+    assert FLOOR_TABS_JS.exists()
+    script = textwrap.dedent(f"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const container = {{
+          children: [],
+          set innerHTML(value) {{ this.children = []; }},
+          appendChild(child) {{ this.children.push(child); return child; }},
+        }};
+        function makeButton() {{
+          return {{
+            dataset: {{}},
+            textContent: '',
+            classes: [],
+            classList: {{
+              add(name) {{ this.owner.classes.push(name); }},
+              remove(name) {{ this.owner.classes = this.owner.classes.filter(x => x !== name); }},
+            }},
+            addEventListener() {{}},
+          }};
+        }}
+        global.window = {{
+          CanteenApp: {{
+            state: {{ activeFloorId: null, lastData: null }},
+          }},
+        }};
+        global.document = {{
+          getElementById(id) {{ return id === 'floor-tabs' ? container : null; }},
+          createElement() {{
+            const btn = makeButton();
+            btn.classList.owner = btn;
+            return btn;
+          }},
+          querySelectorAll(selector) {{
+            return selector === '#floor-tabs button' ? container.children : [];
+          }},
+        }};
+        vm.runInThisContext(fs.readFileSync({json.dumps(str(FLOOR_TABS_JS))}, 'utf8'));
+        window.CanteenApp.renderFloorTabs({{
+          id: 'minghu_xueyi',
+          floors: [{{ floor_id: 1 }}, {{ floor_id: 2 }}, {{ floor_id: 3 }}],
+        }});
+        window.CanteenApp.renderFloorTabs({{
+          id: 'xuesi',
+          floors: [{{ floor_id: 1 }}, {{ floor_id: 2 }}],
+        }});
+        window.CanteenApp.renderFloorTabs({{
+          id: 'minghu_xueyi',
+          floors: [{{ floor_id: 1 }}, {{ floor_id: 2 }}, {{ floor_id: 3 }}],
+        }});
+        console.log(JSON.stringify({{
+          labels: container.children.map(btn => btn.textContent),
+          floors: container.children.map(btn => btn.dataset.floor),
+        }}));
+    """)
+    result = run_node(script)
+
+    assert result == {
+        'labels': ['全楼层', '1F', '2F', '3F'],
+        'floors': ['all', '1', '2', '3'],
+    }
