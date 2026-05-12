@@ -82,6 +82,9 @@
                         <span class="canvas-title">食堂平面布局</span>
                         <span class="canvas-legend-bar" id="canvas-legend-bar"></span>
                     </div>
+                    <div class="campus-map-container" id="campus-map-container" hidden>
+                        <svg id="campus-map-svg"></svg>
+                    </div>
                     <canvas id="canteen-canvas" width="900" height="640"></canvas>
                 </div>
 
@@ -184,5 +187,6 @@
 
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 <script src="{{ url_for('static', filename='js/campus.js') }}"></script>
+<script src="{{ url_for('static', filename='js/campus_map.js') }}"></script>
 </body>
 </html>
