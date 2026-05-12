@@ -1,6 +1,13 @@
 // ================================== 全局状态
+window.CanteenApp = window.CanteenApp || {};
+
 const API_BASE = '/api';
 const state = {
+    mode: 'single',
+    view: 'canteen',
+    activeCanteenId: null,
+    activeFloorId: null,
+    canteenOrder: [],
     lastData: null,
     timer: null,
     speed: 2,
@@ -47,6 +54,7 @@ resetBtn.addEventListener('click', () => {
 
 configForm.addEventListener('submit', async e => {
     e.preventDefault();
+    state.mode = 'single';
     const config = {
         window_count: parseInt(document.getElementById('window_count').value, 10),
         seat_count: parseInt(document.getElementById('seat_count').value, 10),
@@ -57,13 +65,14 @@ configForm.addEventListener('submit', async e => {
     };
 
     try {
-        await apiPost('/simulation/reset');
+        const apiBase = currentSimulationBase();
+        await apiPost(`${apiBase}/reset`);
         const configRes = await apiPost('/config', config);
         if (!configRes.ok) {
             alert(configRes.data.error || '参数提交失败');
             return;
         }
-        const startRes = await apiPost('/simulation/start');
+        const startRes = await apiPost(`${apiBase}/start`);
         if (!startRes.ok) {
             alert(startRes.data.error || '仿真启动失败');
             return;
@@ -93,7 +102,7 @@ playPauseBtn.addEventListener('click', () => {
     } else {
         playPauseBtn.textContent = '继续';
         stopLoop();
-        apiPost('/simulation/pause').catch(() => {});
+        apiPost(`${currentSimulationBase()}/pause`).catch(() => {});
     }
 });
 
@@ -105,12 +114,16 @@ endBtn.addEventListener('click', async () => {
     endBtn.textContent = '结算中...';
     try {
         // 让后端把剩余事件一次跑完，保证分析页拿到的是完整统计
-        const res = await fetch(`${API_BASE}/simulation/finish`, { method: 'POST' });
+        const res = await fetch(`${API_BASE}${currentSimulationBase()}/finish`, { method: 'POST' });
         if (!res.ok) {
             alert('结束仿真失败，请检查后端日志');
             return;
         }
-        const stats = await res.json();
+        let stats = await res.json();
+        if (state.mode === 'campus') {
+            const statsRes = await fetch(`${API_BASE}/campus/statistics`);
+            if (statsRes.ok) stats = await statsRes.json();
+        }
         showPage('analysis');
         renderStatCards(stats);
         renderCharts(stats);
@@ -133,6 +146,10 @@ speedRange.addEventListener('input', () => {
 
 function resetSimulationState() {
     state.lastData = null;
+    state.view = 'canteen';
+    state.activeCanteenId = null;
+    state.activeFloorId = null;
+    state.canteenOrder = [];
     state.studentPrev = {};
     playPauseBtn.textContent = '暂停';
     document.getElementById('current-time').textContent = '00:00';
@@ -157,15 +174,7 @@ function stopLoop() {
 
 async function tick() {
     try {
-        const res = await fetch(`${API_BASE}/simulation/step`);
-        if (!res.ok) {
-            stopLoop();
-            return;
-        }
-        const data = await res.json();
-        state.lastData = data;
-        updateInfoPanel(data);
-        drawCanteen(data);
+        const data = await dispatchStep();
         if (data.is_ended) {
             stopLoop();
             playPauseBtn.textContent = '开始';
@@ -175,6 +184,56 @@ async function tick() {
         console.error(err);
         stopLoop();
     }
+}
+
+async function dispatchStep() {
+    const path = state.mode === 'campus'
+        ? '/campus/step?display_tick_seconds=10'
+        : '/simulation/step';
+    const res = await fetch(`${API_BASE}${path}`);
+    if (!res.ok) throw new Error('step failed');
+    const data = await res.json();
+    state.lastData = data;
+
+    if (data.mode === 'campus') {
+        state.canteenOrder = data.canteen_order || Object.keys(data.canteens || {});
+        if (!state.activeCanteenId) {
+            state.activeCanteenId = state.canteenOrder[0] || null;
+        }
+        updateInfoPanel(campusInfoPanelData(data));
+        const activeCanteen = activeCanteenSnapshot(data);
+        if (activeCanteen) drawCanteen(activeCanteen);
+        if (window.CanteenApp.refreshCampusView) {
+            window.CanteenApp.refreshCampusView(data);
+        }
+    } else {
+        updateInfoPanel(data);
+        drawCanteen(data);
+    }
+    return data;
+}
+
+function currentSimulationBase() {
+    return state.mode === 'campus' ? '/campus' : '/simulation';
+}
+
+function activeCanteenSnapshot(data) {
+    if (!data || !data.canteens) return null;
+    const activeId = state.activeCanteenId || data.canteen_order?.[0];
+    return activeId ? data.canteens[activeId] : null;
+}
+
+function campusInfoPanelData(data) {
+    const totals = data.campus_totals || {};
+    return {
+        current_time: data.current_time || 0,
+        total_arrived: totals.total_arrived || 0,
+        total_served: totals.total_served || 0,
+        total_eating: totals.total_eating || 0,
+        total_in_queue: totals.total_in_queue || 0,
+        empty_seats: totals.empty_seats || 0,
+        avg_waiting_time: totals.avg_waiting_time || 0,
+    };
 }
 
 function updateInfoPanel(data) {
@@ -366,12 +425,13 @@ function drawStudentDots(data, windowBoxes, W, H) {
 // ================================== 数据分析
 const restartBtn = document.getElementById('restart-btn');
 restartBtn.addEventListener('click', () => {
-    apiPost('/simulation/reset').finally(() => showPage('config'));
+    apiPost(`${currentSimulationBase()}/reset`).finally(() => showPage('config'));
 });
 
 async function loadStatistics() {
     try {
-        const res = await fetch(`${API_BASE}/statistics`);
+        const path = state.mode === 'campus' ? '/campus/statistics' : '/statistics';
+        const res = await fetch(`${API_BASE}${path}`);
         if (!res.ok) return;
         const stats = await res.json();
         renderStatCards(stats);
@@ -390,16 +450,27 @@ function renderStatCards(s) {
     document.getElementById('stat-seat-utilization').textContent = `${s.seat_utilization.toFixed(1)}%`;
 }
 
+function normalizeWindowServed(windowServed) {
+    if (Array.isArray(windowServed)) {
+        return windowServed.map((value, i) => ({ name: `窗口 ${i + 1}`, value }));
+    }
+    if (!windowServed || typeof windowServed !== 'object') return [];
+    return Object.entries(windowServed).flatMap(([canteenId, values]) =>
+        (values || []).map((value, i) => ({ name: `${canteenId} 窗口 ${i + 1}`, value }))
+    );
+}
+
 function renderCharts(stats) {
     disposeCharts();
+    const windowSeries = normalizeWindowServed(stats.window_served);
 
     state.charts.window = echarts.init(document.getElementById('window-chart'));
     state.charts.window.setOption({
         tooltip: { trigger: 'axis' },
         grid: { left: 40, right: 20, top: 20, bottom: 30 },
-        xAxis: { type: 'category', data: stats.window_served.map((_, i) => `窗口 ${i + 1}`) },
+        xAxis: { type: 'category', data: windowSeries.map(item => item.name) },
         yAxis: { type: 'value' },
-        series: [{ type: 'bar', data: stats.window_served, itemStyle: { color: '#b91c1c' } }],
+        series: [{ type: 'bar', data: windowSeries.map(item => item.value), itemStyle: { color: '#b91c1c' } }],
     });
 
     state.charts.pie = echarts.init(document.getElementById('pie-chart'));
@@ -409,7 +480,7 @@ function renderCharts(stats) {
         series: [{
             type: 'pie',
             radius: ['40%', '70%'],
-            data: stats.window_served.map((v, i) => ({ value: v, name: `窗口 ${i + 1}` })),
+            data: windowSeries.map(item => ({ value: item.value, name: item.name })),
         }],
     });
 
@@ -463,7 +534,8 @@ historyRefreshBtn.addEventListener('click', loadHistoryList);
 
 async function loadHistoryList() {
     try {
-        const res = await fetch(`${API_BASE}/history/configs`);
+        const path = state.mode === 'campus' ? '/campus/history/configs' : '/history/configs';
+        const res = await fetch(`${API_BASE}${path}`);
         if (!res.ok) return;
         const configs = await res.json();
         renderHistoryTable(configs);
@@ -505,7 +577,10 @@ function renderHistoryTable(configs) {
 
 async function loadHistoryDetail(configId) {
     try {
-        const res = await fetch(`${API_BASE}/history?config_id=${configId}`);
+        const path = state.mode === 'campus'
+            ? `/campus/history?config_id=${configId}`
+            : `/history?config_id=${configId}`;
+        const res = await fetch(`${API_BASE}${path}`);
         if (!res.ok) return;
         const snapshots = await res.json();
         renderHistoryDetail(configId, snapshots);
@@ -522,10 +597,10 @@ function renderHistoryDetail(configId, snapshots) {
     state.historyChart = echarts.init(historyDetailChart);
 
     const minutes = snapshots.map(s => +(s.current_time / 60).toFixed(2));
-    const arrived = snapshots.map(s => s.total_arrived);
-    const served = snapshots.map(s => s.total_served);
-    const queue = snapshots.map(s => s.total_in_queue);
-    const eating = snapshots.map(s => s.total_eating);
+    const arrived = snapshots.map(s => historyTotals(s).total_arrived);
+    const served = snapshots.map(s => historyTotals(s).total_served);
+    const queue = snapshots.map(s => historyTotals(s).total_in_queue);
+    const eating = snapshots.map(s => historyTotals(s).total_eating);
 
     state.historyChart.setOption({
         tooltip: { trigger: 'axis' },
@@ -540,6 +615,10 @@ function renderHistoryDetail(configId, snapshots) {
             { name: '正在就餐', type: 'line', smooth: true, data: eating, itemStyle: { color: '#ef4444' } },
         ],
     });
+}
+
+function historyTotals(snapshot) {
+    return snapshot.campus_totals || snapshot;
 }
 
 // ================================== 图例栏
@@ -572,3 +651,13 @@ async function apiPost(path, body) {
     try { data = await res.json(); } catch (e) { /* ignore */ }
     return { ok: res.ok, data };
 }
+
+window.CanteenApp.state = state;
+window.CanteenApp.dispatchStep = dispatchStep;
+window.CanteenApp.drawCanteen = drawCanteen;
+window.CanteenApp.drawWindows = drawWindows;
+window.CanteenApp.drawSeats = drawSeats;
+window.CanteenApp.drawStudentDots = drawStudentDots;
+window.CanteenApp.updateInfoPanel = updateInfoPanel;
+window.CanteenApp.renderCharts = renderCharts;
+window.CanteenApp.disposeCharts = disposeCharts;
