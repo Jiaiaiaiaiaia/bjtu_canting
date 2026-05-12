@@ -1046,10 +1046,16 @@ class CampusStats:
 | POST | `/api/campus/finish` | 跑完剩余事件 |
 | POST | `/api/campus/reset` | 重置 |
 | GET  | `/api/campus/statistics` | 联合统计（每食堂分别 + 校园层面） |
+| GET  | `/api/campus/history/configs` | 校园模式历史配置列表，从 `campus_snapshot` 汇总 |
+| GET  | `/api/campus/history?config_id=...` | 校园模式历史时间序列，从 `campus_snapshot` 读取 |
 
 `/api/campus/step` 与单食堂 `/api/simulation/step` 的关键区别：
 
 > 校园模式下事件密度高（高峰期可达数百事件/分钟），逐事件返回不利于前端流畅渲染。`/api/campus/step` 按"展示时间片推进"——默认每次推进 10 秒仿真时间，返回该时刻的聚合状态；前端按 200-500 ms 一次轮询，本地用线性插值平滑学生位置变化。
+
+`/api/campus/finish` 也按 `display_tick_seconds` 采样写入历史：即使 SimPy 事件稀疏，历史表仍应出现 10、20、30 ... 这样的展示时间片快照，最后追加一条 `event_type="finish"` 的终点快照。实现必须保留 `max_steps` 防死循环保护；达到上限后不得再用 `env.run(until=...)` 继续消费事件。
+
+校园历史接口与单食堂历史接口物理隔离：旧 `/api/history*` 继续只读 `simulation_snapshot`，新增 `/api/campus/history*` 只读 `campus_snapshot`。这样 Phase 2 历史语义不变，A.18 校园联调也能拿到完整 campus timeline。
 
 ### 4.3 校园联合 step 响应形状
 
@@ -1096,6 +1102,48 @@ class CampusStats:
 ```
 
 `avg_walk_time` 与 `switch_rate` 给 §10 部署阶段灵敏度分析提供数据列；`switch_rate` 是切换学生比例（0.0-1.0），`avg_walk_time` 含初次到达 + 跨食堂迁移两段走路秒数。
+
+### 4.3.1 校园联合 statistics 响应形状
+
+`/api/campus/statistics` 返回聚合统计，不返回 raw snapshot。至少包含以下字段：
+
+```json
+{
+  "mode": "campus",
+  "total_arrived": 875,
+  "total_served": 643,
+  "total_switches": 38,
+  "avg_waiting_time": 142.3,
+  "avg_service_time": 29.8,
+  "avg_eating_time": 901.2,
+  "avg_walk_time": 86.7,
+  "switch_rate": 0.043,
+  "window_served": {
+    "minghu_xueyi": [20, 18, 21],
+    "xuehuo": [12, 13],
+    "xuesi": [16, 15]
+  },
+  "seat_utilization": 37.6,
+  "peak_queue_length": 95,
+  "queue_timeline": {"x": [0, 1, 2], "y": [0, 43, 95]},
+  "seat_util_timeline": {"x": [0, 1, 2], "y": [0, 12.5, 37.6]},
+  "canteen_statistics": {
+    "minghu_xueyi": {
+      "display_name": "明湖学一食堂",
+      "total_arrived": 320,
+      "total_served": 250,
+      "total_in_queue": 30,
+      "total_eating": 42,
+      "empty_seats": 692,
+      "window_served": [20, 18, 21],
+      "seat_count": 734,
+      "active_window_count": 33
+    }
+  }
+}
+```
+
+`queue_timeline` 与 `seat_util_timeline` 来自 `campus_snapshot` 及尚未 flush 的 campus buffer 聚合，保证前端统计图与历史快照使用同一条数据链。
 
 ### 4.4 会话状态统一管理
 
@@ -1572,7 +1620,7 @@ three/
 | `test_window.py` | 5 | join_queue / leave_queue / leave_queue_idempotent / estimated_wait_for（含 current_serving）/ floor_id 字段保留 |
 | `test_router.py` | 8 | pick_initial 分布 / no_switch_when_close / switch_when_clearly_better / oscillation_prevented / max_switches_capped / walk_time_in_decision / uses_current_window / live_congestion_mode |
 | `test_coordinator.py` | 7 | 校园协调器：单 / 联合模式启停 / 时钟一致性 / canteens dict 形状 / snapshot 含 campus_totals / total_in_queue 含等座 / target_canteen_id 切换时更新 |
-| `test_campus_api.py` | 5 | `/api/campus/config` `/start` `/step` `/finish` `/status` |
+| `test_campus_api.py` | 11 | `/api/campus/config` `/start` `/step` `/finish` `/status` `/statistics` `/history*`；覆盖 buffer flush、finish display-tick timeline、max_steps 保护 |
 | `test_arrival_generator.py` | 3 | Poisson 间隔分布 / simulation_seconds 截止后停止 / 已生成学生能 drain |
 | `test_db_migration.py` | 3 | ALTER 后旧 `simulation_config` 仍可读 / `campus_snapshot` 新表 / 旧 `/api/history` 仍能查单食堂数据 |
 | `test_multi_floor.py` | 4 | 多楼层 preset 加载 / Window 与 Seat 带正确 floor_id / snapshot.floors[] 与 flat 字段一致 / 单层食堂 floors[] 长度为 1 |
@@ -1588,6 +1636,9 @@ three/
 - `test_lifecycle_target_canteen_id_updates_on_switch`（新增；防止 v1.3 修过的 bug 1 回归）
 - `test_arrival_generator_drains_after_simulation_seconds`（新增；防止 v1.3 修过的 bug 2 回归）
 - `test_canteen_avg_eat_time_in_minutes_not_seconds`（新增；防止 v1.3 修过的 bug 3 回归——验证 Canteen.avg_eat_time 与 preset.avg_eat_time_minutes 数值一致，未被 ×60）
+- `test_campus_history_endpoints_read_campus_snapshots`（新增；校园历史入口必须读 `campus_snapshot`，旧 `/api/history*` 保持单食堂语义）
+- `test_campus_finish_records_strict_display_tick_snapshots`（新增；finish 稀疏事件场景也必须按展示时间片落历史点）
+- `test_advance_to_display_time_does_not_run_past_max_steps`（新增；`max_steps` 达上限后不得继续 `env.run(until=...)` 消费事件）
 
 ### 7.3 可复现性
 
@@ -1776,3 +1827,4 @@ flask-cors>=4.0.0
 | v1.4 | 2026-04-28 | 食堂名单与命名一致性更新：把全文示例食堂从虚构的 xueyi/xueer/xueyuan/siyuan 全部替换为主校区实际 4 食堂 xueyuan / minghu_xueyi / xuehuo / xuesi（display_name 学苑/明湖学一/学活/学四）；同步 §2.1 preset 文件名、§2.8 walking matrix、§3.1 候选清单、§3.2 preset 示例、§4.3 step 响应示例、§5.3 元数据表注释、§6.3 后端 3D 字段示例。§8.2 联调测试报告内容要点把"70+ 单测全绿"改为"不少于 80 条单测全绿"，与 §7.1 / §11.1 测试目标对齐 | 朱思思 |
 | v1.5 | 2026-04-28 | 按最终调研口径将第四个主校区食堂统一命名为 `xuesi` / 学四食堂，去掉此前混用造成的歧义；同步 preset 文件名、walking matrix、step 示例和候选清单 | 朱思思 |
 | v1.6 | 2026-04-28 | 缩小建模范围：去掉学苑食堂，统一 3 食堂契约（明湖学一 / 学活 / 学四）。同步 §0 文档导读、§2.1 preset 文件列表、§2.8 walking matrix 4×4→3×3 + entrance_walk_seconds 4→3、§3.1 候选清单、§3.2 兼容说明、§3.3 调研流程（食堂数 + 步行对数 4 食堂×6 对→3 食堂×3 对）、§3.4 coverage 默认 0.78→0.65（建议范围 0.60-0.70）、§4.3 step 响应示例、§5.3 元数据表注释、§6.1 三层视图描述、§9.1 时间线、§11 DoD（联合跑通 / preset 数 / 3D 校园建筑数）。剩余的"4"全部是其他语义（4 项指标 / 4 个 on_student_* 方法 / 历史 v1.3-v1.4 的 bug 修复列表），不动 | 朱思思 |
+| v1.7 | 2026-05-12 | A.10 follow-up 回写：补 `/api/campus/history*` 契约、`/api/campus/statistics` 聚合响应形状、finish 按 display tick 写 campus timeline、`max_steps` 防死循环保护；同步 `test_campus_api.py` 用例数与关键回归清单 | 朱思思 |
