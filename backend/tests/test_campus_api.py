@@ -1,5 +1,8 @@
 """A.10.1 /api/campus/* Blueprint 集成测试。"""
+import sqlite3
+
 import pytest
+import simpy
 
 
 @pytest.fixture
@@ -122,6 +125,134 @@ def test_campus_finish_drains_simulation(client):
     assert body["campus_totals"]["total_arrived"] == body["campus_totals"]["total_served"]
     assert body["campus_totals"]["total_arrived"] > 0
     assert body["fast_forward_steps"] >= 0
+
+
+def test_campus_step_flushes_snapshot_buffer_in_batches(client):
+    import api.routes as routes
+
+    client.post("/api/campus/config", json=make_campus_payload(simulation_seconds=300))
+    client.post("/api/campus/start")
+
+    for _ in range(60):
+        res = client.get("/api/campus/step?display_tick_seconds=1")
+        assert res.status_code == 200
+
+    assert len(routes._session["snapshot_buffer"]) < 50
+    with sqlite3.connect(routes.DB_PATH) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM campus_snapshot").fetchone()[0]
+    assert count >= 50
+
+
+def test_campus_finish_records_timeline_snapshots(client):
+    import api.routes as routes
+
+    client.post("/api/campus/config", json=make_campus_payload(simulation_seconds=35))
+    client.post("/api/campus/start")
+    res = client.post("/api/campus/finish")
+    assert res.status_code == 200
+
+    with sqlite3.connect(routes.DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT s.current_time, s.event_type FROM campus_snapshot s ORDER BY s.current_time"
+        ).fetchall()
+
+    assert len(rows) > 1
+    assert rows[-1][1] == "finish"
+    assert [row[0] for row in rows] == sorted(row[0] for row in rows)
+
+
+def test_campus_history_endpoints_read_campus_snapshots(client):
+    cfg = client.post(
+        "/api/campus/config", json=make_campus_payload(simulation_seconds=35)
+    ).get_json()
+    client.post("/api/campus/start")
+    client.post("/api/campus/finish")
+
+    configs = client.get("/api/campus/history/configs").get_json()
+    record = next(item for item in configs if item["id"] == cfg["config_id"])
+    assert record["mode"] == "campus"
+    assert record["snapshot_count"] > 1
+    assert record["total_arrived"] == record["total_served"]
+
+    history = client.get(
+        f"/api/campus/history?config_id={cfg['config_id']}"
+    ).get_json()
+    assert len(history) == record["snapshot_count"]
+    assert history[0]["config_id"] == cfg["config_id"]
+    assert "campus_totals" in history[0]
+    assert "canteens" in history[0]
+    assert "in_transit" in history[0]
+
+
+def test_campus_finish_records_strict_display_tick_snapshots(client):
+    import api.routes as routes
+
+    payload = make_campus_payload(simulation_seconds=120)
+    payload["campus"]["total_students"] = 1
+    payload["campus"]["peak_window_minutes"] = 120
+    client.post("/api/campus/config", json=payload)
+    client.post("/api/campus/start")
+    res = client.post("/api/campus/finish?display_tick_seconds=10")
+    assert res.status_code == 200
+
+    with sqlite3.connect(routes.DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT s.current_time, s.event_type FROM campus_snapshot s ORDER BY s.current_time"
+        ).fetchall()
+
+    step_times = [round(row[0], 6) for row in rows if row[1] == "step"]
+    assert step_times[:4] == [10, 20, 30, 40]
+    assert 120 in step_times
+    assert len(step_times) >= 12
+
+
+def test_advance_to_display_time_does_not_run_past_max_steps():
+    from api.campus_routes import _advance_to_display_time
+
+    env = simpy.Environment()
+    processed_times = []
+    for delay in range(1, 11):
+        event = env.timeout(delay)
+        event.callbacks.append(lambda e: processed_times.append(e.env.now))
+
+    coordinator = type("CoordinatorProbe", (), {"env": env})()
+    steps = _advance_to_display_time(
+        coordinator, target_time=10, steps=0, max_steps=5
+    )
+
+    assert steps == 5
+    assert processed_times == [1, 2, 3, 4, 5]
+    assert env.now == 5
+
+
+def test_campus_statistics_returns_aggregate_metrics_not_raw_snapshot(client):
+    client.post("/api/campus/config", json=make_campus_payload(simulation_seconds=5))
+    client.post("/api/campus/start")
+    client.post("/api/campus/finish")
+
+    res = client.get("/api/campus/statistics")
+
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["mode"] == "campus"
+    assert "campus_totals" not in body
+    assert "in_transit" not in body
+    for field in [
+        "total_arrived",
+        "total_served",
+        "avg_waiting_time",
+        "avg_service_time",
+        "avg_eating_time",
+        "avg_walk_time",
+        "switch_rate",
+        "window_served",
+        "seat_utilization",
+        "peak_queue_length",
+        "queue_timeline",
+        "seat_util_timeline",
+        "canteen_statistics",
+    ]:
+        assert field in body
 
 
 def test_campus_status_returns_mode_field(client):
