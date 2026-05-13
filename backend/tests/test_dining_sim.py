@@ -38,6 +38,10 @@ class TestPickNearestSeat:
 
 
 class TestSampleEatTime:
+    def test_accepts_z_score(self):
+        assert sample_eat_time(15, z_score=0.0) == 900
+        assert sample_eat_time(15, z_score=-100.0) == 60.0
+
     def test_lower_bound_60_seconds(self):
         for _ in range(500):
             # 即使输入很小，也应保证至少 60 秒

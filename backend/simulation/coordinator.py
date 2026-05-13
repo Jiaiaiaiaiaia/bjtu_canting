@@ -23,18 +23,29 @@ if TYPE_CHECKING:
 class CampusCoordinator:
     """管理 N 个 Canteen + 调度共享时钟；N=1 时服务单食堂兼容门面。"""
 
-    def __init__(self, env: simpy.Environment, config: dict, rng: random.Random):
+    def __init__(
+        self,
+        env: simpy.Environment,
+        config: dict,
+        rng: random.Random,
+        random_streams=None,
+    ):
         self.env = env
         self.canteens: dict[str, Canteen] = {
             d["id"]: Canteen(env, d) for d in config["canteens"]
         }
         self.campus = Campus(config["campus"], self.canteens)
+        self.routing_rng = random_streams.routing if random_streams is not None else rng
+        self.arrival_rng = random_streams.arrival if random_streams is not None else rng
+        self.service_rng = random_streams.service if random_streams is not None else None
+        self.eat_rng = random_streams.eat if random_streams is not None else None
         # config["router"] 是来自 JSON 的 dict，转成 dataclass 再传给 Router
         router_cfg = RouterConfig(**config["router"])
-        self.router = StudentRouter(env, router_cfg, self.campus, rng)
+        self.router = StudentRouter(env, router_cfg, self.campus, self.routing_rng)
         self.stats = CampusStats()
         self.arrival_generator = ArrivalGenerator(
-            env, config["campus"], self.canteens, self.router, self.campus, self, rng
+            env, config["campus"], self.canteens, self.router,
+            self.campus, self, self.arrival_rng
         )
 
         # 校园级累计：不依赖 sum(canteen.total_arrived)。

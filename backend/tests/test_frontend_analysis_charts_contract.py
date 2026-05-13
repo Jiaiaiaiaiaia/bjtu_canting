@@ -60,6 +60,7 @@ def test_analysis_page_has_scenario_comparison_panel():
         'id="scenario-panel"',
         'id="scenario-run-btn"',
         'id="scenario-status"',
+        'id="scenario-seed"',
         'id="scenario-comparison"',
         'id="scenario-adjustment"',
         'id="scenario-baseline-wait"',

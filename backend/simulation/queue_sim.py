@@ -22,7 +22,12 @@ def pick_shortest_window(windows):
     return min(windows, key=lambda w: w.queue_load())
 
 
-def sample_serve_time(avg_serve_time):
+def sample_serve_time(avg_serve_time, rng=None, z_score=None):
     """正态分布采样打饭时长（秒），下限 1 秒。"""
-    serve_time = random.normalvariate(avg_serve_time, avg_serve_time * 0.2)
+    std = avg_serve_time * 0.2
+    if z_score is None:
+        source = rng if rng is not None else random
+        serve_time = source.normalvariate(avg_serve_time, std)
+    else:
+        serve_time = avg_serve_time + z_score * std
     return max(1.0, serve_time)

@@ -22,8 +22,13 @@ def pick_nearest_seat(seats, window_id, window_count):
     return min(empty, key=lambda s: abs(s.id - target_id))
 
 
-def sample_eat_time(avg_eat_minutes):
+def sample_eat_time(avg_eat_minutes, rng=None, z_score=None):
     """正态分布采样就餐时长（秒）。"""
     avg_seconds = avg_eat_minutes * 60
-    eat_time = random.normalvariate(avg_seconds, avg_seconds * 0.2)
+    std = avg_seconds * 0.2
+    if z_score is None:
+        source = rng if rng is not None else random
+        eat_time = source.normalvariate(avg_seconds, std)
+    else:
+        eat_time = avg_seconds + z_score * std
     return max(60.0, eat_time)

@@ -25,6 +25,12 @@ CONFIG = {
 }
 
 
+def finish_single(client, config):
+    assert client.post('/api/config', json=config).status_code == 200
+    assert client.post('/api/simulation/start').status_code == 200
+    return client.post('/api/simulation/finish').get_json()
+
+
 class TestConfigEndpoint:
     def test_valid_config_accepted(self, client):
         r = client.post('/api/config', json=CONFIG)
@@ -45,6 +51,27 @@ class TestConfigEndpoint:
         bad['arrival_rate'] = -1
         r = client.post('/api/config', json=bad)
         assert r.status_code == 400
+
+    def test_config_forwards_optional_rng_seed(self, monkeypatch, client):
+        captured = {}
+
+        class CapturingEngine:
+            def __init__(self, config, config_id=None, rng_seed=None):
+                captured['rng_seed'] = rng_seed
+
+        import api.routes as routes
+        monkeypatch.setattr(routes, 'SimulationEngine', CapturingEngine)
+
+        response = client.post('/api/config', json=dict(CONFIG, rng_seed=20260513))
+
+        assert response.status_code == 200
+        assert captured['rng_seed'] == 20260513
+
+    def test_config_rejects_non_integer_rng_seed(self, client):
+        response = client.post('/api/config', json=dict(CONFIG, rng_seed='bad-seed'))
+
+        assert response.status_code == 400
+        assert 'rng_seed' in response.get_json()['error']
 
 
 class TestStartGuard:
@@ -94,6 +121,17 @@ class TestFinish:
     def test_finish_without_config_400(self, client):
         r = client.post('/api/simulation/finish')
         assert r.status_code == 400
+
+    def test_same_seed_api_runs_are_reproducible(self, client):
+        config = dict(CONFIG, rng_seed=20260513)
+
+        a = finish_single(client, config)
+        client.post('/api/simulation/reset')
+        b = finish_single(client, config)
+
+        assert a['total_arrived'] == b['total_arrived']
+        assert a['total_served'] == b['total_served']
+        assert a['avg_waiting_time'] == b['avg_waiting_time']
 
 
 class TestHistory:

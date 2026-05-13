@@ -498,6 +498,7 @@ restartBtn.addEventListener('click', () => {
 });
 const scenarioRunBtn = document.getElementById('scenario-run-btn');
 const scenarioStatus = document.getElementById('scenario-status');
+const scenarioSeed = document.getElementById('scenario-seed');
 if (scenarioRunBtn) {
     scenarioRunBtn.addEventListener('click', runSuggestedScenario);
 }
@@ -546,11 +547,31 @@ function setScenarioStatus(text) {
     if (scenarioStatus) scenarioStatus.textContent = text;
 }
 
+function setScenarioSeed(text) {
+    if (scenarioSeed) scenarioSeed.textContent = text;
+}
+
 function resetScenarioPanel() {
     const box = document.getElementById('scenario-comparison');
     if (box) box.hidden = true;
     setScenarioStatus('完成单食堂仿真后可运行建议方案。');
+    setScenarioSeed('受控对比：等待运行');
     updateScenarioActionState();
+}
+
+function buildScenarioSeed() {
+    return Date.now() % 1000000000;
+}
+
+async function runSingleScenarioWithSeed(config, seed) {
+    await apiPost('/simulation/reset');
+    const configRes = await apiPost('/config', { ...config, rng_seed: seed });
+    if (!configRes.ok) throw new Error(configRes.data.error || '配置失败');
+    const startRes = await apiPost('/simulation/start');
+    if (!startRes.ok) throw new Error(startRes.data.error || '启动失败');
+    const finishRes = await apiPost('/simulation/finish');
+    if (!finishRes.ok) throw new Error(finishRes.data.error || '结算失败');
+    return finishRes.data;
 }
 
 function updateScenarioActionState() {
@@ -594,21 +615,18 @@ async function runSuggestedScenario() {
     const prevLabel = scenarioRunBtn.textContent;
     scenarioRunBtn.disabled = true;
     scenarioRunBtn.textContent = '运行中...';
-    setScenarioStatus('正在按建议方案重跑单食堂仿真...');
+    const seed = buildScenarioSeed();
+    setScenarioSeed(`受控对比：seed=${seed}`);
+    setScenarioStatus('正在用同一随机输入重跑基线和建议方案...');
     try {
-        await apiPost('/simulation/reset');
-        const configRes = await apiPost('/config', suggestion.config);
-        if (!configRes.ok) throw new Error(configRes.data.error || '建议方案配置失败');
-        const startRes = await apiPost('/simulation/start');
-        if (!startRes.ok) throw new Error(startRes.data.error || '建议方案启动失败');
-        const finishRes = await apiPost('/simulation/finish');
-        if (!finishRes.ok) throw new Error(finishRes.data.error || '建议方案结算失败');
-
-        const adjustedStats = finishRes.data;
+        const baselineResult = await runSingleScenarioWithSeed(baselineConfig, seed);
+        const adjustedResult = await runSingleScenarioWithSeed(suggestion.config, seed);
         state.lastSingleConfig = suggestion.config;
-        showStatistics(adjustedStats);
-        renderScenarioComparison(baselineStats, adjustedStats, suggestion.summary);
-        setScenarioStatus('建议方案已完成，可对照三项关键指标。');
+        showStatistics(adjustedResult);
+        renderScenarioComparison(baselineResult, adjustedResult,
+            `${suggestion.summary}，受控 seed=${seed}`,
+        );
+        setScenarioStatus('建议方案已完成，已按同一随机输入对照三项关键指标。');
     } catch (err) {
         console.error(err);
         setScenarioStatus(err.message || '建议方案运行失败');

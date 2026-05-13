@@ -4,13 +4,14 @@ Phase 2 对外仍暴露 ``SimulationEngine(config, config_id=None, rng_seed=None
 内部改为用单食堂 ``CampusCoordinator`` 跑 SimPy 生命周期。API 和前端需要的
 字段保持 Phase 2 形状。
 """
-import random
 
 import simpy
 from simpy.core import EmptySchedule
 
 from .coordinator import CampusCoordinator
+from .random_streams import build_random_streams
 from .student import Student
+from .student_trace import build_single_canteen_traces
 
 
 class SimulationEngine:
@@ -19,19 +20,19 @@ class SimulationEngine:
     SINGLE_CANTEEN_ID = "single"
 
     def __init__(self, config, config_id=None, rng_seed=None):
-        if rng_seed is not None:
-            random.seed(rng_seed)
-
         self.config = config
         self.config_id = config_id
         self.total_time = float(config["total_time"]) * 60
-        self._rng = random.Random(rng_seed)
+        self._streams = build_random_streams(rng_seed)
+        self._rng = self._streams.routing
         self._env = simpy.Environment()
         self._planned_students: list[Student] = []
+        self._student_traces = build_single_canteen_traces(config, self._streams)
         self.coordinator = CampusCoordinator(
             self._env,
             self._to_single_canteen_config(config),
             self._rng,
+            random_streams=self._streams,
         )
         self._canteen = self.coordinator.canteens[self.SINGLE_CANTEEN_ID]
 
@@ -109,6 +110,7 @@ class SimulationEngine:
                 "walking_time_seconds": {},
                 "entrance_walk_seconds": {self.SINGLE_CANTEEN_ID: 0.0},
                 "_planned_students": self._planned_students,
+                "_student_traces": self._student_traces,
             },
             "router": {
                 "information_mode": "local_estimate",
@@ -126,10 +128,13 @@ class SimulationEngine:
         if self._is_started:
             return
         self._is_started = True
-        planned_count = max(
-            1,
-            int(float(self.config["arrival_rate"]) * float(self.config["total_time"]) * 3) + 100,
-        )
+        if self._student_traces:
+            planned_count = len(self._student_traces)
+        else:
+            planned_count = max(
+                1,
+                int(float(self.config["arrival_rate"]) * float(self.config["total_time"]) * 3) + 100,
+            )
         if not self._planned_students:
             self._planned_students.extend(
                 Student(id=i, state="arriving")

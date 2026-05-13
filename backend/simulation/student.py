@@ -26,6 +26,7 @@ class Student:
     switch_count: int = 0
     patience_threshold: float = 180.0   # 创建时按正态分布采样覆盖
     walking_start_time: float = 0.0     # Coordinator 维护，给 Campus.transit_progress 用
+    trace: object = None
 
 
 def student_lifecycle(env, student, router, canteens, campus, coordinator):
@@ -101,7 +102,12 @@ def student_lifecycle(env, student, router, canteens, campus, coordinator):
 
                 window.start_serving(student)
                 student.state = "serving"
-                service_duration = sample_serve_time(canteen.avg_serve_time)
+                trace = getattr(student, "trace", None)
+                service_duration = sample_serve_time(
+                    canteen.avg_serve_time,
+                    rng=getattr(coordinator, "service_rng", None),
+                    z_score=getattr(trace, "service_z", None),
+                )
                 try:
                     yield env.timeout(service_duration)
                     student.service_time = service_duration
@@ -127,7 +133,12 @@ def student_lifecycle(env, student, router, canteens, campus, coordinator):
         canteen.leave_seat_queue(student)
         seat.student = student
         student.state = "eating"
-        eat_duration = sample_eat_time(canteen.avg_eat_time)
+        trace = getattr(student, "trace", None)
+        eat_duration = sample_eat_time(
+            canteen.avg_eat_time,
+            rng=getattr(coordinator, "eat_rng", None),
+            z_score=getattr(trace, "eat_z", None),
+        )
         seat.eat_end_time = env.now + eat_duration
         yield env.timeout(eat_duration)
         seat.student = None

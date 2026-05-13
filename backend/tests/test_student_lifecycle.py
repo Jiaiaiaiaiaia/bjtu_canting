@@ -20,6 +20,8 @@ class StubCoordinator:
     def __init__(self, env):
         self.env = env
         self.stats = CampusStats()
+        self.service_rng = random.Random(1001)
+        self.eat_rng = random.Random(1002)
         self.transit_students = []
         self.arrived_calls = []      # student.id list
         self.walking_starts = []     # student.id list

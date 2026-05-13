@@ -1,4 +1,6 @@
 """A.9.1 SimulationEngine SimPy 兼容门面回归测试。"""
+import random
+
 from simulation import SimulationEngine
 
 
@@ -13,6 +15,15 @@ def make_engine(**overrides):
     }
     config.update(overrides)
     return SimulationEngine(config, config_id=0, rng_seed=42)
+
+
+def run_to_end(config, seed):
+    engine = SimulationEngine(config, config_id=0, rng_seed=seed)
+    engine.start()
+    while True:
+        state = engine.step()
+        if state["is_ended"]:
+            return state
 
 
 def test_wraps_single_canteen_coordinator():
@@ -56,3 +67,57 @@ def test_empty_schedule_end_state_is_recorded_in_history():
     assert engine.history
     assert engine.history[-1]["event_type"] == "end"
     assert engine.history[-1]["current_time"] == state["current_time"]
+
+
+def test_seeded_engine_does_not_reset_global_random_state():
+    random.seed(20260513)
+    expected = random.random()
+
+    random.seed(20260513)
+    SimulationEngine(make_engine().config, config_id=0, rng_seed=42)
+    observed = random.random()
+
+    assert observed == expected
+
+
+def test_seeded_engine_attaches_trace_to_spawned_students():
+    engine = make_engine()
+    engine.start()
+    engine.step()
+
+    assert engine.coordinator.all_students
+    assert engine.coordinator.all_students[0].trace is not None
+
+
+def test_same_seed_same_config_is_reproducible():
+    config = make_engine().config
+    a = run_to_end(config, seed=20260513)
+    b = run_to_end(config, seed=20260513)
+
+    assert a["total_arrived"] == b["total_arrived"]
+    assert a["total_served"] == b["total_served"]
+    assert a["avg_waiting_time"] == b["avg_waiting_time"]
+
+
+def test_same_seed_capacity_change_keeps_same_arrivals():
+    config = make_engine().config
+    adjusted = dict(config, window_count=config["window_count"] + 1)
+
+    baseline = run_to_end(config, seed=20260513)
+    changed = run_to_end(adjusted, seed=20260513)
+
+    assert baseline["total_arrived"] == changed["total_arrived"]
+
+
+def test_same_seed_service_or_eat_change_keeps_same_arrivals():
+    config = make_engine().config
+    adjusted = dict(
+        config,
+        avg_serve_time=config["avg_serve_time"] * 0.8,
+        avg_eat_time=config["avg_eat_time"] * 0.8,
+    )
+
+    baseline = run_to_end(config, seed=20260513)
+    changed = run_to_end(adjusted, seed=20260513)
+
+    assert baseline["total_arrived"] == changed["total_arrived"]

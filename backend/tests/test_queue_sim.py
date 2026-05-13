@@ -41,6 +41,10 @@ class TestPickShortestWindow:
 
 
 class TestSampleServeTime:
+    def test_accepts_z_score(self):
+        assert sample_serve_time(30, z_score=0.0) == 30
+        assert sample_serve_time(30, z_score=-100.0) == 1.0
+
     def test_lower_bound_one_second(self):
         for _ in range(500):
             assert sample_serve_time(1.0) >= 1.0

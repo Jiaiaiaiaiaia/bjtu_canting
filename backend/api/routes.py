@@ -129,6 +129,12 @@ def submit_config():
         'arrival_rate': float(payload['arrival_rate']),
         'total_time': int(payload['total_time']),
     }
+    rng_seed = payload.get('rng_seed')
+    if rng_seed is not None:
+        try:
+            rng_seed = int(rng_seed)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'rng_seed 必须是整数'}), 400
 
     with sqlite3.connect(DB_PATH) as conn:
         cur = conn.execute(
@@ -144,7 +150,7 @@ def submit_config():
         conn.commit()
 
     _session['mode'] = 'single'
-    _session['engine'] = SimulationEngine(config, config_id=config_id)
+    _session['engine'] = SimulationEngine(config, config_id=config_id, rng_seed=rng_seed)
     _session['coordinator'] = None
     _session['config_id'] = config_id
     _session['is_running'] = False

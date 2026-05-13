@@ -60,20 +60,24 @@ class ArrivalGenerator:
         T = self.config["peak_window_minutes"]
         return N * alpha * coverage / T
 
-    def _spawn_student(self) -> Student:
+    def _spawn_student(self, trace=None) -> Student:
         planned_students = self.config.get("_planned_students")
         if planned_students is not None and self._next_student_id < len(planned_students):
             student = planned_students[self._next_student_id]
             student.state = "arriving"
-            student.patience_threshold = self.router.sample_patience()
         else:
             student = Student(
                 id=self._next_student_id,
                 state="arriving",
-                patience_threshold=self.router.sample_patience(),
             )
             if planned_students is not None:
                 planned_students.append(student)
+        if trace is not None:
+            student.trace = trace
+            student.patience_threshold = trace.to_patience_seconds(self.router.config)
+        else:
+            student.trace = None
+            student.patience_threshold = self.router.sample_patience()
         self._next_student_id += 1
         return student
 
@@ -87,6 +91,21 @@ class ArrivalGenerator:
         # Lazy import：A.6.1 实施时 student_lifecycle 还没建（A.7.1 才建）。
         # 函数内 import 让本模块能独立加载，跑测试时只要测试不实际调用 _run 就不爆。
         from .student import Student  # noqa: F401  (Student 已在模块顶 import；这里仅做防御)
+
+        traces = self.config.get("_student_traces")
+        if traces is not None:
+            last_arrival = 0.0
+            for trace in traces:
+                delay = max(0.0, trace.arrival_at - last_arrival)
+                yield self.env.timeout(delay)
+                last_arrival = trace.arrival_at
+                student = self._spawn_student(trace)
+                from .student import student_lifecycle  # type: ignore[attr-defined]
+                self.env.process(student_lifecycle(
+                    self.env, student, self.router,
+                    self.canteens, self.campus, self.coordinator,
+                ))
+            return
 
         rate_per_sec = self._compute_arrival_rate_per_minute() / 60.0
         # 到达截止时间：单位秒。若未在 config 中显式指定，

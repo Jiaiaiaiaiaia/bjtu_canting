@@ -4,6 +4,7 @@ import pytest
 import simpy
 
 from simulation.arrival_generator import ArrivalGenerator
+from simulation.student_trace import StudentTrace
 
 
 # 1. λ 公式：N × α × coverage / T，不乘 peak_beta
@@ -97,6 +98,56 @@ def test_arrival_generator_drains_after_simulation_seconds():
     )
     # 至少应该 spawn 过几个（确认测试不是 trivial）
     assert arrivals_at_60 > 0, f"60s 内应至少 spawn 1 个学生，实际 {arrivals_at_60}"
+
+
+def test_arrival_generator_replays_precomputed_student_traces(monkeypatch):
+    import simulation.student as student_mod
+
+    def stub_lifecycle(env, student, *args, **kwargs):
+        if False:
+            yield
+        return
+
+    monkeypatch.setattr(student_mod, "student_lifecycle", stub_lifecycle, raising=False)
+
+    class StubRouter:
+        class Config:
+            patience_mean_seconds = 180.0
+            patience_std_seconds = 60.0
+            patience_min_seconds = 30.0
+
+        config = Config()
+
+        def sample_patience(self):
+            return 999.0
+
+    env = simpy.Environment()
+    planned_students = []
+    traces = [
+        StudentTrace(arrival_at=10.0, patience_z=0.0, service_z=0.1, eat_z=0.2),
+        StudentTrace(arrival_at=20.0, patience_z=-100.0, service_z=0.3, eat_z=0.4),
+    ]
+    cfg = {
+        "total_students": 1,
+        "lunch_alpha": 1.0,
+        "coverage": 1.0,
+        "peak_window_minutes": 100,
+        "simulation_seconds": 100,
+        "_planned_students": planned_students,
+        "_student_traces": traces,
+    }
+
+    gen = ArrivalGenerator(
+        env, cfg, canteens={}, router=StubRouter(),
+        campus=None, coordinator=None, rng=random.Random(42),
+    )
+
+    env.run(until=25)
+
+    assert gen._next_student_id == 2
+    assert [student.trace for student in planned_students] == traces
+    assert planned_students[0].patience_threshold == 180.0
+    assert planned_students[1].patience_threshold == 30.0
 
 
 # 4. v1.3 bug 2 边界回归：env.now >= stop_after 时不再 spawn 新学生

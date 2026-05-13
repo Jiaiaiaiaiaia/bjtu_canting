@@ -112,17 +112,23 @@ def test_main_js_runs_single_canteen_suggested_scenario_without_campus_api():
     for snippet in (
         "const scenarioRunBtn = document.getElementById('scenario-run-btn');",
         'async function runSuggestedScenario()',
+        'async function runSingleScenarioWithSeed(config, seed)',
+        'function buildScenarioSeed()',
         "if (state.mode !== 'single')",
         'window.CanteenApp.AnalysisCharts.buildSuggestedSingleConfig',
         "await apiPost('/simulation/reset')",
-        "await apiPost('/config', suggestion.config)",
+        "await apiPost('/config', { ...config, rng_seed: seed })",
         "await apiPost('/simulation/start')",
         "await apiPost('/simulation/finish')",
-        'renderScenarioComparison(baselineStats, adjustedStats, suggestion.summary);',
+        'const baselineResult = await runSingleScenarioWithSeed(baselineConfig, seed)',
+        'const adjustedResult = await runSingleScenarioWithSeed(suggestion.config, seed)',
+        'renderScenarioComparison(baselineResult, adjustedResult',
         'function showStatistics(stats)',
         'state.lastStatistics = stats;',
     ):
         assert snippet in MAIN_JS
+
+    assert 'renderScenarioComparison(baselineStats, adjustedStats, suggestion.summary)' not in MAIN_JS
 
 
 def test_main_js_exposes_scenario_helpers_for_contract_testing():
