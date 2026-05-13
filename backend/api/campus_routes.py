@@ -8,6 +8,7 @@ from flask import Blueprint, jsonify, request
 
 import api.routes as single_routes
 from simulation.coordinator import CampusCoordinator
+from simulation.presets.loader import load_default_campus_preset
 
 
 campus_bp = Blueprint('campus_api', __name__, url_prefix='/api/campus')
@@ -312,6 +313,17 @@ def _advance_to_display_time(coordinator, target_time: float,
     if coordinator.env.peek() != float('inf') and coordinator.env.now < target_time:
         coordinator.env.run(until=target_time)
     return steps
+
+
+@campus_bp.get('/presets/default')
+def default_campus_preset():
+    preset = load_default_campus_preset()
+    return jsonify({
+        'mode': 'campus',
+        'config': preset['config'],
+        'visible_canteens': preset['visible_canteens'],
+        'pending_canteens': preset['pending_canteens'],
+    })
 
 
 @campus_bp.post('/config')

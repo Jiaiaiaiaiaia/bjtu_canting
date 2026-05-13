@@ -100,6 +100,21 @@ def test_post_campus_config_returns_canteen_order(client):
     assert body["canteen_order"] == ["minghu_xueyi", "xuehuo", "xuesi"]
 
 
+def test_campus_default_preset_endpoint(client):
+    resp = client.get("/api/campus/presets/default")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["mode"] == "campus"
+    assert data["pending_canteens"] == ["xuehuo"]
+    assert [c["id"] for c in data["config"]["canteens"]] == [
+        "minghu_xueyi",
+        "xuesi",
+    ]
+    visible = [c["id"] for c in data["visible_canteens"]]
+    assert visible == ["minghu_xueyi", "xuehuo", "xuesi"]
+
+
 def test_campus_step_advances_display_tick(client):
     client.post("/api/campus/config", json=make_campus_payload())
     client.post("/api/campus/start")
