@@ -21,6 +21,7 @@ def test_a16_html_adds_mode_forms_and_campus_controls():
         'data-campus-preset="default"',
         'id="pending-data-note"',
         'id="campus-config-json"',
+        'placeholder="API 预设加载后会自动填入；手动模式请粘贴完整校园 JSON"',
         'id="view-switcher" hidden',
         'data-view="campus"',
         'data-view="canteen"',
@@ -44,11 +45,15 @@ def test_a16_main_js_binds_mode_and_view_controls():
         'function syncModeForms()',
         'function readCampusConfig()',
         'function loadDefaultCampusPreset()',
+        'function applyCampusPresetMetadata(',
         'function renderPendingDataNote(',
         'function getCampusConfigForSubmit()',
         '/campus/presets/default',
         'pending_canteens',
         'campusConfigDirty',
+        'visible_canteens',
+        'source_scale',
+        'display_tick_seconds=60',
         'function resetActiveSession()',
         'function applyViewState()',
         '/simulation/status',
@@ -127,3 +132,11 @@ def test_a16_css_styles_new_campus_ui_shell():
         '.canteen-marker',
     ):
         assert snippet in STYLE_CSS
+
+
+def test_a16_html_does_not_embed_xuehuo_placeholder_runtime_json():
+    textarea = INDEX_HTML.split('id="campus-config-json"', 1)[1].split('</textarea>', 1)[0]
+
+    assert '"id": "xuehuo"' not in textarea
+    assert 'placeholder single-floor layout' not in textarea
+    assert '5 窗口 / 150 座' not in textarea

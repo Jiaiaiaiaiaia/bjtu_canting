@@ -111,6 +111,9 @@ def test_campus_default_preset_endpoint(client):
         "minghu_xueyi",
         "xuesi",
     ]
+    assert data["demo_runtime"] is True
+    assert data["source_scale"]["total_students"] == 28000
+    assert data["config"]["campus"]["total_students"] == 180
     visible = [c["id"] for c in data["visible_canteens"]]
     assert visible == ["minghu_xueyi", "xuehuo", "xuesi"]
 

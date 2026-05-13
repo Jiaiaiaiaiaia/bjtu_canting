@@ -8,6 +8,9 @@ const state = {
     activeCanteenId: null,
     activeFloorId: null,
     canteenOrder: [],
+    visibleCanteens: [],
+    pendingCanteens: [],
+    campusPresetScale: null,
     lastData: null,
     timer: null,
     speed: 2,
@@ -60,6 +63,9 @@ resetBtn.addEventListener('click', () => {
     if (campusConfigJson) campusConfigJson.value = DEFAULT_CAMPUS_CONFIG;
     campusPresetPayload = null;
     campusConfigDirty = false;
+    state.visibleCanteens = [];
+    state.pendingCanteens = [];
+    state.campusPresetScale = null;
     const singleModeRadio = document.getElementById('simulation-mode-single');
     if (singleModeRadio) singleModeRadio.checked = true;
     renderPendingDataNote([]);
@@ -166,12 +172,19 @@ async function loadDefaultCampusPreset() {
     if (!res.ok) throw new Error('校园预设加载失败');
     const data = await res.json();
     campusPresetPayload = data.config;
+    applyCampusPresetMetadata(data);
     if (campusConfigJson) {
         campusConfigJson.value = JSON.stringify(data.config, null, 2);
         campusConfigDirty = false;
     }
     renderPendingDataNote(data.pending_canteens || []);
     return data.config;
+}
+
+function applyCampusPresetMetadata(data) {
+    state.visibleCanteens = data.visible_canteens || [];
+    state.pendingCanteens = data.pending_canteens || [];
+    state.campusPresetScale = data.source_scale || null;
 }
 
 function renderPendingDataNote(pending) {
@@ -184,6 +197,9 @@ function renderPendingDataNote(pending) {
 
 async function getCampusConfigForSubmit() {
     if (campusConfigDirty) {
+        state.visibleCanteens = [];
+        state.pendingCanteens = [];
+        state.campusPresetScale = null;
         return readCampusConfig();
     }
     if (campusPresetPayload) {
@@ -251,7 +267,10 @@ endBtn.addEventListener('click', async () => {
     endBtn.textContent = '结算中...';
     try {
         // 让后端把剩余事件一次跑完，保证分析页拿到的是完整统计
-        const res = await fetch(`${API_BASE}${currentSimulationBase()}/finish`, { method: 'POST' });
+        const finishPath = state.mode === 'campus'
+            ? '/campus/finish?display_tick_seconds=60'
+            : '/simulation/finish';
+        const res = await fetch(`${API_BASE}${finishPath}`, { method: 'POST' });
         if (!res.ok) {
             alert('结束仿真失败，请检查后端日志');
             return;

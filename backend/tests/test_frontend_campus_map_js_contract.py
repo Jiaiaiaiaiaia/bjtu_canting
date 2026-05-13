@@ -159,6 +159,126 @@ def test_campus_map_renders_markers_heat_and_transit_dots():
     }
 
 
+def test_campus_map_renders_visible_pending_canteen_without_click_handler():
+    assert CAMPUS_MAP_JS.exists()
+    snapshot = {
+        'mode': 'campus',
+        'canteens': {
+            'minghu_xueyi': {
+                'display_name': '明湖学一',
+                'campus_position': {'x': 100, 'y': 80},
+                'windows': [],
+                'waiting_queue_length': 0,
+            },
+            'xuesi': {
+                'display_name': '学四',
+                'campus_position': {'x': 360, 'y': 120},
+                'windows': [],
+                'waiting_queue_length': 0,
+            },
+        },
+        'in_transit': [],
+    }
+    visible_canteens = [
+        {
+            'id': 'minghu_xueyi',
+            'display_name': '明湖学一',
+            'campus_position': {'x': 100, 'y': 80},
+            'runtime_included': True,
+        },
+        {
+            'id': 'xuehuo',
+            'display_name': '学活食堂',
+            'campus_position': {'x': 240, 'y': 180},
+            'runtime_included': False,
+            'data_status': 'missing',
+        },
+        {
+            'id': 'xuesi',
+            'display_name': '学四',
+            'campus_position': {'x': 360, 'y': 120},
+            'runtime_included': True,
+        },
+    ]
+    script = textwrap.dedent(f"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const nodes = {{}};
+        function makeEl(tag) {{
+          return {{
+            tag,
+            attrs: {{}},
+            children: [],
+            textContent: '',
+            events: {{}},
+            setAttribute(name, value) {{
+              this.attrs[name] = String(value);
+              if (name === 'id') nodes[value] = this;
+            }},
+            appendChild(child) {{ this.children.push(child); return child; }},
+            addEventListener(name, handler) {{ this.events[name] = handler; }},
+          }};
+        }}
+        const svg = makeEl('svg');
+        svg.setAttribute('id', 'campus-map-svg');
+        nodes['campus-map-svg'] = svg;
+        global.document = {{
+          getElementById(id) {{ return nodes[id] || null; }},
+          createElementNS(ns, tag) {{ return makeEl(tag); }},
+          querySelector(selector) {{
+            const match = selector.match(/data-cid="([^"]+)"/);
+            if (!match) return null;
+            const marker = svg.children.find(el =>
+              el.tag === 'g' &&
+              el.attrs.class === 'canteen-marker' &&
+              el.attrs['data-cid'] === match[1]
+            );
+            return marker ? marker.children.find(el => el.tag === 'rect') : null;
+          }},
+        }};
+        global.window = {{
+          CanteenApp: {{
+            state: {{
+              view: 'campus',
+              visibleCanteens: {json.dumps(visible_canteens, ensure_ascii=False)},
+              pendingCanteens: ['xuehuo'],
+              activeCanteenId: null,
+              activeFloorId: null,
+              lastData: 'snapshot',
+            }},
+            applyViewState() {{ global.applyCount = (global.applyCount || 0) + 1; }},
+            refreshCampusView(snapshot) {{ global.refreshCalledWith = snapshot; }},
+          }},
+        }};
+        vm.runInThisContext(fs.readFileSync({json.dumps(str(CAMPUS_MAP_JS))}, 'utf8'));
+        window.CanteenApp.renderCampusMap({json.dumps(snapshot, ensure_ascii=False)});
+        const markers = svg.children.filter(el => el.attrs.class === 'canteen-marker');
+        const xuehuo = markers.find(el => el.attrs['data-cid'] === 'xuehuo');
+        console.log(JSON.stringify({{
+          markerIds: markers.map(el => el.attrs['data-cid']),
+          pending: xuehuo.attrs['data-pending'],
+          runtimeIncluded: xuehuo.attrs['data-runtime-included'],
+          opacity: xuehuo.children[0].attrs.opacity,
+          label: xuehuo.children[1].textContent,
+          hasClick: Boolean(xuehuo.events.click),
+          applyCalled: global.applyCount || 0,
+          refreshCalled: Boolean(global.refreshCalledWith),
+        }}));
+    """)
+    result = run_node(script)
+
+    assert result == {
+        'markerIds': ['minghu_xueyi', 'xuehuo', 'xuesi'],
+        'pending': 'true',
+        'runtimeIncluded': 'false',
+        'opacity': '0.45',
+        'label': '学活食堂 待补',
+        'hasClick': False,
+        'applyCalled': 0,
+        'refreshCalled': False,
+    }
+
+
 def test_campus_map_rebuilds_markers_when_canteen_signature_changes():
     assert CAMPUS_MAP_JS.exists()
     snapshot_a = {

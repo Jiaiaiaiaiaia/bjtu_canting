@@ -8,6 +8,11 @@ from pathlib import Path
 
 PRESET_DIR = Path(__file__).resolve().parent
 CANTEEN_FILES = ("minghu_xueyi.json", "xuehuo.json", "xuesi.json")
+DEMO_CAMPUS_OVERRIDES = {
+    "total_students": 180,
+    "peak_window_minutes": 20,
+    "simulation_seconds": 300,
+}
 FIELD_STATUS = {
     "minghu_xueyi": {
         "data_status": "field_collected_pending_review",
@@ -39,8 +44,22 @@ def _annotate_canteen(item: dict) -> dict:
     return item
 
 
+def _demo_campus_config(campus: dict) -> tuple[dict, dict]:
+    source_scale = {
+        "total_students": campus["total_students"],
+        "peak_window_minutes": campus["peak_window_minutes"],
+        "simulation_seconds": campus["simulation_seconds"],
+    }
+    demo = copy.deepcopy(campus)
+    demo.update(DEMO_CAMPUS_OVERRIDES)
+    demo["demo_runtime"] = True
+    demo["source_scale"] = source_scale
+    return demo, source_scale
+
+
 def load_default_campus_preset() -> dict:
     campus = _read_json(PRESET_DIR / "_campus.json")
+    campus, source_scale = _demo_campus_config(campus)
     visible_canteens = [
         _annotate_canteen(_read_json(PRESET_DIR / name))
         for name in CANTEEN_FILES
@@ -69,4 +88,6 @@ def load_default_campus_preset() -> dict:
             canteen["id"] for canteen in visible_canteens
             if not canteen["runtime_included"]
         ],
+        "source_scale": source_scale,
+        "demo_runtime": True,
     }

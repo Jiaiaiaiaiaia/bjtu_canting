@@ -26,6 +26,9 @@ def test_main_js_state_has_campus_control_fields():
         'activeCanteenId: null',
         'activeFloorId: null',
         'canteenOrder: []',
+        'visibleCanteens: []',
+        'pendingCanteens: []',
+        'campusPresetScale: null',
     ):
         assert snippet in MAIN_JS
 
@@ -39,12 +42,23 @@ def test_main_js_loads_campus_preset_without_hiding_manual_json_edits():
         'campusPresetPayload = null;',
         'async function loadDefaultCampusPreset()',
         '/campus/presets/default',
+        'applyCampusPresetMetadata(data);',
+        'state.visibleCanteens = data.visible_canteens || [];',
+        'state.pendingCanteens = data.pending_canteens || [];',
+        'state.campusPresetScale = data.source_scale || null;',
         'campusConfigDirty = false;',
         'async function getCampusConfigForSubmit()',
         'if (campusConfigDirty) {',
+        'state.visibleCanteens = [];',
         'return readCampusConfig();',
     ):
         assert snippet in MAIN_JS
+
+
+def test_main_js_uses_coarser_campus_finish_tick_for_demo_runtime():
+    assert "const finishPath = state.mode === 'campus'" in MAIN_JS
+    assert "?display_tick_seconds=60" in MAIN_JS
+    assert "fetch(`${API_BASE}${finishPath}`, { method: 'POST' })" in MAIN_JS
 
 
 def test_main_js_dispatches_step_by_mode():

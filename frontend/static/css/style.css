@@ -534,6 +534,18 @@ button:disabled {
     stroke-width: 2;
 }
 
+.canteen-marker[data-pending="true"] {
+    cursor: not-allowed;
+}
+
+.canteen-marker[data-pending="true"] text {
+    fill: #92400e;
+}
+
+.canteen-marker[data-pending="true"]:hover rect {
+    stroke: var(--c-warning);
+}
+
 .control-panel {
     display: flex;
     gap: 16px;

@@ -79,73 +79,7 @@
                             <div id="pending-data-note" class="pending-data-note"></div>
                         </div>
                         <label for="campus-config-json">高级配置 JSON</label>
-                        <textarea id="campus-config-json" spellcheck="false">{
-  "campus": {
-    "total_students": 180,
-    "lunch_alpha": 1.0,
-    "coverage": 0.65,
-    "peak_window_minutes": 20,
-    "peak_beta": 1.5,
-    "simulation_seconds": 180,
-    "entrance_position": { "x": 0, "y": 0 },
-    "walking_speed_mps": 1.4,
-    "walking_time_seconds": {},
-    "entrance_walk_seconds": {
-      "minghu_xueyi": 12,
-      "xuehuo": 18,
-      "xuesi": 24
-    }
-  },
-  "canteens": [
-    {
-      "id": "minghu_xueyi",
-      "display_name": "明湖学一",
-      "campus_position": { "x": 90, "y": 90 },
-      "avg_serve_time_seconds": 25,
-      "avg_eat_time_minutes": 12,
-      "arrival_weight": 1.0,
-      "typical_wait_seconds": 80,
-      "floors": [
-        { "floor_id": 1, "windows": { "physical_count": 4, "active_count": 3 }, "seats": { "count": 80 } },
-        { "floor_id": 2, "windows": { "physical_count": 3, "active_count": 2 }, "seats": { "count": 70 } }
-      ]
-    },
-    {
-      "id": "xuehuo",
-      "display_name": "学活",
-      "campus_position": { "x": 240, "y": 180 },
-      "avg_serve_time_seconds": 28,
-      "avg_eat_time_minutes": 12,
-      "arrival_weight": 1.0,
-      "typical_wait_seconds": 90,
-      "floors": [
-        { "floor_id": 1, "windows": { "physical_count": 5, "active_count": 4 }, "seats": { "count": 120 } }
-      ]
-    },
-    {
-      "id": "xuesi",
-      "display_name": "学四",
-      "campus_position": { "x": 360, "y": 120 },
-      "avg_serve_time_seconds": 30,
-      "avg_eat_time_minutes": 12,
-      "arrival_weight": 1.0,
-      "typical_wait_seconds": 100,
-      "floors": [
-        { "floor_id": 1, "windows": { "physical_count": 3, "active_count": 2 }, "seats": { "count": 70 } },
-        { "floor_id": 2, "windows": { "physical_count": 3, "active_count": 2 }, "seats": { "count": 70 } }
-      ]
-    }
-  ],
-  "router": {
-    "information_mode": "local_estimate",
-    "patience_mean_seconds": 180,
-    "patience_std_seconds": 30,
-    "patience_min_seconds": 30,
-    "switch_improvement_ratio": 1.3,
-    "max_switches_per_student": 2,
-    "rng_seed": 42
-  }
-}</textarea>
+                        <textarea id="campus-config-json" spellcheck="false" placeholder="API 预设加载后会自动填入；手动模式请粘贴完整校园 JSON"></textarea>
                     </div>
 
                     <div class="form-buttons">

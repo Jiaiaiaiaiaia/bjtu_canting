@@ -323,6 +323,8 @@ def default_campus_preset():
         'config': preset['config'],
         'visible_canteens': preset['visible_canteens'],
         'pending_canteens': preset['pending_canteens'],
+        'source_scale': preset['source_scale'],
+        'demo_runtime': preset['demo_runtime'],
     })
 
 

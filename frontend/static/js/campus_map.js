@@ -28,8 +28,43 @@
         return layer;
     }
 
-    function markerSignature(canteens) {
-        return Object.entries(canteens || {})
+    function markerEntries(snapshot) {
+        const runtime = snapshot?.canteens || {};
+        const visible = Array.isArray(App.state?.visibleCanteens)
+            ? App.state.visibleCanteens
+            : [];
+        const pending = new Set(App.state?.pendingCanteens || []);
+        const entries = [];
+        const seen = new Set();
+
+        visible.forEach(item => {
+            if (!item || !item.id) return;
+            const live = runtime[item.id];
+            const marker = { ...item, ...(live || {}) };
+            marker.runtime_included = Boolean(live) || item.runtime_included !== false;
+            marker.pending_marker = !live && (
+                item.runtime_included === false ||
+                item.data_status === 'missing' ||
+                pending.has(item.id)
+            );
+            entries.push([item.id, marker]);
+            seen.add(item.id);
+        });
+
+        Object.entries(runtime).forEach(([cid, canteen]) => {
+            if (seen.has(cid)) return;
+            entries.push([cid, {
+                ...canteen,
+                runtime_included: true,
+                pending_marker: false,
+            }]);
+        });
+
+        return entries;
+    }
+
+    function markerSignature(entries) {
+        return (entries || [])
             .map(([cid, canteen]) => {
                 const pos = canteen.campus_position || {};
                 return [
@@ -37,6 +72,7 @@
                     canteen.display_name || '',
                     pos.x ?? '',
                     pos.y ?? '',
+                    canteen.pending_marker ? 'pending' : 'runtime',
                 ].join(':');
             })
             .sort()
@@ -56,17 +92,19 @@
         }
     }
 
-    function initSvg(canteens) {
+    function initSvg(entries) {
         const svg = ensureSvg();
         if (!svg) return;
         svg.setAttribute('viewBox', '-50 -50 500 400');
 
-        for (const cid in canteens || {}) {
-            const c = canteens[cid];
+        for (const [cid, c] of entries || []) {
             if (!c.campus_position) continue;
+            const isPending = Boolean(c.pending_marker);
             const g = createSvgEl('g', {
                 class: 'canteen-marker',
                 'data-cid': cid,
+                'data-pending': isPending ? 'true' : 'false',
+                'data-runtime-included': c.runtime_included ? 'true' : 'false',
             });
             const rect = createSvgEl('rect', {
                 x: c.campus_position.x - 25,
@@ -74,10 +112,14 @@
                 width: 50,
                 height: 50,
                 rx: 6,
-                fill: '#f8fafc',
-                stroke: '#64748b',
+                fill: isPending ? '#e5e7eb' : '#f8fafc',
+                stroke: isPending ? '#f59e0b' : '#64748b',
                 'stroke-width': 1.5,
+                opacity: isPending ? 0.45 : 1,
             });
+            if (isPending) {
+                rect.setAttribute('stroke-dasharray', '4 3');
+            }
             const label = createSvgEl('text', {
                 x: c.campus_position.x,
                 y: c.campus_position.y + 5,
@@ -85,21 +127,25 @@
                 'font-size': 12,
                 fill: '#0f172a',
             });
-            label.textContent = c.display_name || cid;
+            label.textContent = isPending
+                ? `${c.display_name || cid} 待补`
+                : (c.display_name || cid);
             g.appendChild(rect);
             g.appendChild(label);
-            g.addEventListener('click', () => {
-                App.state.view = 'canteen';
-                App.state.activeCanteenId = cid;
-                App.state.activeFloorId = null;
-                if (App.applyViewState) App.applyViewState();
-                if (App.state.lastData && App.refreshCampusView) {
-                    App.refreshCampusView(App.state.lastData);
-                }
-            });
+            if (!isPending) {
+                g.addEventListener('click', () => {
+                    App.state.view = 'canteen';
+                    App.state.activeCanteenId = cid;
+                    App.state.activeFloorId = null;
+                    if (App.applyViewState) App.applyViewState();
+                    if (App.state.lastData && App.refreshCampusView) {
+                        App.refreshCampusView(App.state.lastData);
+                    }
+                });
+            }
             svg.appendChild(g);
         }
-        lastMarkerSignature = markerSignature(canteens);
+        lastMarkerSignature = markerSignature(entries);
         svgInited = true;
     }
 
@@ -112,12 +158,13 @@
     function renderCampusMap(snapshot) {
         const svg = ensureSvg();
         if (!svg || !snapshot) return;
-        const signature = markerSignature(snapshot.canteens || {});
+        const entries = markerEntries(snapshot);
+        const signature = markerSignature(entries);
         if (signature !== lastMarkerSignature) {
             clearMarkerNodes(svg);
             svgInited = false;
         }
-        if (!svgInited) initSvg(snapshot.canteens || {});
+        if (!svgInited) initSvg(entries);
 
         for (const cid in snapshot.canteens || {}) {
             const c = snapshot.canteens[cid];
@@ -155,6 +202,7 @@
     }
 
     App.createSvgEl = createSvgEl;
+    App.markerEntries = markerEntries;
     App.renderCampusMap = renderCampusMap;
     App.renderInTransitDots = renderInTransitDots;
 })();

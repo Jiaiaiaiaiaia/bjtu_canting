@@ -43,3 +43,15 @@ def test_pending_canteens_are_not_routable():
         c["id"] != "xuehuo"
         for c in preset["config"]["canteens"]
     )
+
+
+def test_default_preset_uses_demo_scale_runtime_with_source_scale_metadata():
+    preset = load_default_campus_preset()
+    campus = preset["config"]["campus"]
+
+    assert campus["total_students"] == 180
+    assert campus["peak_window_minutes"] == 20
+    assert campus["simulation_seconds"] == 300
+    assert preset["source_scale"]["total_students"] == 28000
+    assert preset["source_scale"]["simulation_seconds"] == 5400
+    assert preset["demo_runtime"] is True
