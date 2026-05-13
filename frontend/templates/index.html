@@ -177,6 +177,28 @@
                 </div>
             </div>
 
+            <div id="diagnosis-panel" class="diagnosis-panel">
+                <div class="diagnosis-header">
+                    <h3>拥堵诊断</h3>
+                    <span id="diagnosis-level" class="diagnosis-level idle">待仿真</span>
+                </div>
+                <div class="diagnosis-grid">
+                    <div class="diagnosis-item">
+                        <span>主要瓶颈</span>
+                        <strong id="diagnosis-bottleneck">暂无样本</strong>
+                    </div>
+                    <div class="diagnosis-item">
+                        <span>峰值时段</span>
+                        <strong id="diagnosis-peak-time">暂无数据</strong>
+                    </div>
+                    <div class="diagnosis-item">
+                        <span>优化方向</span>
+                        <strong id="diagnosis-action">先完成一次仿真</strong>
+                    </div>
+                </div>
+                <p id="diagnosis-summary" class="diagnosis-summary">完成仿真后生成诊断。</p>
+            </div>
+
             <div class="charts-container">
                 <div class="chart-item">
                     <h3>各窗口服务人数</h3>

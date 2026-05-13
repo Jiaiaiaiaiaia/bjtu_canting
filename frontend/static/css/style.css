@@ -636,6 +636,94 @@ button:disabled {
     color: var(--c-text);
 }
 
+.diagnosis-panel {
+    margin: 0 0 20px;
+    padding: 16px 18px;
+    background: var(--c-card);
+    border: 1px solid var(--c-border);
+    border-left: 4px solid var(--c-primary);
+    border-radius: var(--radius-md);
+}
+
+.diagnosis-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.diagnosis-header h3 {
+    margin: 0;
+    color: var(--c-text);
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.diagnosis-level {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--c-bg);
+    color: var(--c-text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.diagnosis-level.low {
+    background: #ecfdf5;
+    color: var(--c-success);
+}
+
+.diagnosis-level.medium {
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.diagnosis-level.high {
+    background: var(--c-primary-light);
+    color: var(--c-primary-dark);
+}
+
+.diagnosis-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.diagnosis-item {
+    min-width: 0;
+    padding: 12px;
+    background: var(--c-bg);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+}
+
+.diagnosis-item span {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--c-text-hint);
+    font-size: 11px;
+}
+
+.diagnosis-item strong {
+    display: block;
+    color: var(--c-text);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.diagnosis-summary {
+    margin: 12px 0 0;
+    color: var(--c-text-secondary);
+    line-height: 1.6;
+}
+
 .charts-container {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -757,6 +845,7 @@ button:disabled {
     .info-panel { grid-template-columns: repeat(3, 1fr); }
     .campus-overview-panel { grid-template-columns: repeat(3, 1fr); }
     .stats-overview { grid-template-columns: repeat(3, 1fr); }
+    .diagnosis-grid { grid-template-columns: 1fr; }
     .charts-container { grid-template-columns: 1fr; }
     .config-card { margin: 16px; padding: 24px; }
     .simulation-toolbar { align-items: stretch; flex-direction: column; }

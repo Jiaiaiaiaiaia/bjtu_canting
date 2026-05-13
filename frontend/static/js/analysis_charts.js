@@ -22,9 +22,131 @@
         );
     }
 
+    function toNumber(value, fallback = 0) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : fallback;
+    }
+
+    function formatSeconds(seconds) {
+        const value = toNumber(seconds);
+        if (value >= 60) return `${(value / 60).toFixed(1)} min`;
+        return `${value.toFixed(1)} s`;
+    }
+
+    function formatPercent(value) {
+        return `${toNumber(value).toFixed(1)}%`;
+    }
+
+    function findPeakPoint(timeline) {
+        const x = timeline && Array.isArray(timeline.x) ? timeline.x : [];
+        const y = timeline && Array.isArray(timeline.y) ? timeline.y : [];
+        if (!y.length) return { value: 0, timeText: '暂无数据' };
+
+        let peakIndex = 0;
+        let peakValue = toNumber(y[0]);
+        y.forEach((value, index) => {
+            const numeric = toNumber(value);
+            if (numeric > peakValue) {
+                peakValue = numeric;
+                peakIndex = index;
+            }
+        });
+
+        const minute = toNumber(x[peakIndex]);
+        const minuteText = Number.isInteger(minute) ? String(minute) : minute.toFixed(1);
+        return { value: peakValue, timeText: `${minuteText} 分` };
+    }
+
+    function buildDiagnosis(stats) {
+        stats = stats || {};
+        const totalArrived = toNumber(stats.total_arrived);
+        const totalServed = toNumber(stats.total_served);
+        const peakQueue = toNumber(stats.peak_queue_length);
+        const avgWait = toNumber(stats.avg_waiting_time);
+        const seatUtilization = toNumber(stats.seat_utilization);
+        const peakPoint = findPeakPoint(stats.queue_timeline);
+
+        if (totalArrived <= 0) {
+            return {
+                level: '待仿真',
+                levelClass: 'idle',
+                bottleneck: '暂无样本',
+                peakTime: '暂无数据',
+                action: '先完成一次仿真',
+                summary: '完成仿真后生成诊断。',
+            };
+        }
+
+        const waitingPressure = avgWait >= 120 || peakQueue >= 30 ? 2 : (avgWait >= 45 || peakQueue >= 10 ? 1 : 0);
+        const seatPressure = seatUtilization >= 85 ? 2 : (seatUtilization >= 70 ? 1 : 0);
+        const maxPressure = Math.max(waitingPressure, seatPressure);
+        const unfinished = Math.max(totalArrived - totalServed, 0);
+
+        let level = '低拥堵';
+        let levelClass = 'low';
+        let bottleneck = '暂无明显瓶颈';
+        let action = '保持当前窗口与座位配置';
+
+        if (maxPressure >= 2) {
+            level = '高拥堵';
+            levelClass = 'high';
+        } else if (maxPressure === 1) {
+            level = '中等拥堵';
+            levelClass = 'medium';
+        }
+
+        if (waitingPressure > 0 && seatPressure > 0) {
+            bottleneck = waitingPressure >= seatPressure ? '窗口排队与座位周转' : '座位周转与窗口排队';
+            action = waitingPressure >= seatPressure ? '优先增开窗口，再评估座位' : '优先增加座位，再评估窗口';
+        } else if (waitingPressure > 0) {
+            bottleneck = '窗口排队压力';
+            action = '增开窗口或缩短平均打饭时间';
+        } else if (seatPressure > 0) {
+            bottleneck = '座位周转压力';
+            action = '增加座位或缩短平均就餐时间';
+        }
+
+        let summary = `峰值排队 ${Math.max(peakQueue, peakPoint.value)} 人，平均等待 ${formatSeconds(avgWait)}，座位利用率 ${formatPercent(seatUtilization)}。`;
+        if (unfinished > 0) {
+            summary += ` 仍有 ${unfinished} 人未完成服务，方案对比时建议先结束仿真。`;
+        }
+        if (stats.switch_rate !== undefined) {
+            summary += ` 跨食堂改派率 ${formatPercent(toNumber(stats.switch_rate) * 100)}。`;
+        }
+
+        return {
+            level,
+            levelClass,
+            bottleneck,
+            peakTime: peakPoint.timeText,
+            action,
+            summary,
+        };
+    }
+
+    function setText(doc, id, value) {
+        const element = doc.getElementById(id);
+        if (element) element.textContent = value;
+        return element;
+    }
+
+    function renderDiagnosis(stats, deps) {
+        const doc = deps.document;
+        const diagnosis = buildDiagnosis(stats || {});
+        const level = setText(doc, 'diagnosis-level', diagnosis.level);
+        if (level) {
+            level.className = `diagnosis-level ${diagnosis.levelClass}`;
+        }
+        setText(doc, 'diagnosis-bottleneck', diagnosis.bottleneck);
+        setText(doc, 'diagnosis-peak-time', diagnosis.peakTime);
+        setText(doc, 'diagnosis-action', diagnosis.action);
+        setText(doc, 'diagnosis-summary', diagnosis.summary);
+    }
+
     function renderCharts(stats, deps) {
         const { document: doc, echarts, state } = deps;
         disposeCharts(deps);
+        renderDiagnosis(stats, deps);
         const windowSeries = normalizeWindowServed(stats.window_served);
 
         state.charts.window = echarts.init(doc.getElementById('window-chart'));
@@ -94,5 +216,7 @@
         disposeCharts,
         resizeCharts,
         normalizeWindowServed,
+        buildDiagnosis,
+        renderDiagnosis,
     };
 })();
