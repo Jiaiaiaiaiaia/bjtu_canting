@@ -213,6 +213,37 @@
                 </div>
             </div>
 
+            <div id="scenario-panel" class="scenario-panel">
+                <div class="scenario-header">
+                    <div>
+                        <h3>方案对比实验</h3>
+                        <p id="scenario-status">完成单食堂仿真后可运行建议方案。</p>
+                    </div>
+                    <button type="button" id="scenario-run-btn" disabled>运行建议方案</button>
+                </div>
+                <div id="scenario-comparison" class="scenario-comparison" hidden>
+                    <p id="scenario-adjustment" class="scenario-adjustment">等待建议方案结果。</p>
+                    <div class="scenario-row">
+                        <span>平均等待</span>
+                        <strong id="scenario-baseline-wait">-</strong>
+                        <strong id="scenario-adjusted-wait">-</strong>
+                        <em id="scenario-delta-wait" class="scenario-delta">-</em>
+                    </div>
+                    <div class="scenario-row">
+                        <span>峰值排队</span>
+                        <strong id="scenario-baseline-peak">-</strong>
+                        <strong id="scenario-adjusted-peak">-</strong>
+                        <em id="scenario-delta-peak" class="scenario-delta">-</em>
+                    </div>
+                    <div class="scenario-row">
+                        <span>座位利用率</span>
+                        <strong id="scenario-baseline-seat">-</strong>
+                        <strong id="scenario-adjusted-seat">-</strong>
+                        <em id="scenario-delta-seat" class="scenario-delta">-</em>
+                    </div>
+                </div>
+            </div>
+
             <div class="charts-container">
                 <div class="chart-item">
                     <h3>各窗口服务人数</h3>

@@ -803,6 +803,92 @@ button:disabled {
     line-height: 1.55;
 }
 
+.scenario-panel {
+    margin: 0 0 20px;
+    padding: 16px 18px;
+    background: var(--c-card);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-md);
+}
+
+.scenario-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.scenario-header h3 {
+    margin: 0;
+    color: var(--c-text);
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.scenario-header p {
+    margin: 6px 0 0;
+    color: var(--c-text-secondary);
+    line-height: 1.55;
+}
+
+#scenario-run-btn {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.scenario-comparison {
+    margin-top: 14px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.scenario-adjustment {
+    margin: 0;
+    padding: 12px 14px;
+    background: var(--c-bg);
+    color: var(--c-text-secondary);
+    border-bottom: 1px solid var(--c-border);
+}
+
+.scenario-row {
+    display: grid;
+    grid-template-columns: 1.2fr repeat(3, 1fr);
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--c-border);
+}
+
+.scenario-row:last-child {
+    border-bottom: 0;
+}
+
+.scenario-row span {
+    color: var(--c-text-hint);
+}
+
+.scenario-row strong {
+    color: var(--c-text);
+    font-size: 14px;
+}
+
+.scenario-delta {
+    color: var(--c-text-secondary);
+    font-style: normal;
+    font-weight: 600;
+}
+
+.scenario-delta.improved {
+    color: var(--c-success);
+}
+
+.scenario-delta.worse {
+    color: var(--c-primary);
+}
+
 .charts-container {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -926,6 +1012,8 @@ button:disabled {
     .stats-overview { grid-template-columns: repeat(3, 1fr); }
     .diagnosis-grid { grid-template-columns: 1fr; }
     .intervention-list { grid-template-columns: 1fr; }
+    .scenario-header { flex-direction: column; }
+    .scenario-row { grid-template-columns: 1fr; gap: 6px; }
     .charts-container { grid-template-columns: 1fr; }
     .config-card { margin: 16px; padding: 24px; }
     .simulation-toolbar { align-items: stretch; flex-direction: column; }

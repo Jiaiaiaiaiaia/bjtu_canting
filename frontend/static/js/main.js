@@ -13,6 +13,8 @@ const state = {
     campusPresetScale: null,
     renderMode: '2d',
     lastData: null,
+    lastStatistics: null,
+    lastSingleConfig: null,
     timer: null,
     speed: 2,
     charts: {},
@@ -119,6 +121,8 @@ configForm.addEventListener('submit', async e => {
             alert(configRes.data.error || '参数提交失败');
             return;
         }
+        state.lastSingleConfig = nextMode === 'single' ? { ...payload } : null;
+        state.lastStatistics = null;
         const startRes = await apiPost(`${apiBase}/start`);
         if (!startRes.ok) {
             alert(startRes.data.error || '仿真启动失败');
@@ -311,8 +315,7 @@ endBtn.addEventListener('click', async () => {
             if (statsRes.ok) stats = await statsRes.json();
         }
         showPage('analysis');
-        renderStatCards(stats);
-        renderCharts(stats);
+        showStatistics(stats);
     } catch (err) {
         console.error(err);
         alert('无法连接后端服务');
@@ -332,6 +335,7 @@ speedRange.addEventListener('input', () => {
 
 function resetSimulationState() {
     state.lastData = null;
+    state.lastStatistics = null;
     state.view = 'canteen';
     state.activeCanteenId = null;
     state.activeFloorId = null;
@@ -348,6 +352,7 @@ function resetSimulationState() {
     document.getElementById('avg-waiting').textContent = '0.0 s';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     applyViewState();
+    resetScenarioPanel();
 }
 
 function startLoop() {
@@ -491,6 +496,11 @@ const restartBtn = document.getElementById('restart-btn');
 restartBtn.addEventListener('click', () => {
     apiPost(`${currentSimulationBase()}/reset`).finally(() => showPage('config'));
 });
+const scenarioRunBtn = document.getElementById('scenario-run-btn');
+const scenarioStatus = document.getElementById('scenario-status');
+if (scenarioRunBtn) {
+    scenarioRunBtn.addEventListener('click', runSuggestedScenario);
+}
 
 async function loadStatistics() {
     try {
@@ -498,11 +508,17 @@ async function loadStatistics() {
         const res = await fetch(`${API_BASE}${path}`);
         if (!res.ok) return;
         const stats = await res.json();
-        renderStatCards(stats);
-        renderCharts(stats);
+        showStatistics(stats);
     } catch (err) {
         console.error(err);
     }
+}
+
+function showStatistics(stats) {
+    state.lastStatistics = stats;
+    renderStatCards(stats);
+    renderCharts(stats);
+    updateScenarioActionState();
 }
 
 function renderStatCards(s) {
@@ -515,6 +531,95 @@ function renderCharts(stats) {
 
 function disposeCharts() {
     window.CanteenApp.AnalysisCharts.disposeCharts(chartDeps());
+}
+
+function renderScenarioComparison(baselineStats, adjustedStats, summary) {
+    window.CanteenApp.AnalysisCharts.renderScenarioComparison(
+        baselineStats,
+        adjustedStats,
+        summary,
+        chartDeps(),
+    );
+}
+
+function setScenarioStatus(text) {
+    if (scenarioStatus) scenarioStatus.textContent = text;
+}
+
+function resetScenarioPanel() {
+    const box = document.getElementById('scenario-comparison');
+    if (box) box.hidden = true;
+    setScenarioStatus('完成单食堂仿真后可运行建议方案。');
+    updateScenarioActionState();
+}
+
+function updateScenarioActionState() {
+    if (!scenarioRunBtn) return;
+    if (state.mode !== 'single') {
+        scenarioRunBtn.disabled = true;
+        setScenarioStatus('校园联合模式暂不自动重跑，建议先查看当前诊断和分流指标。');
+        return;
+    }
+    if (!state.lastStatistics || !state.lastSingleConfig) {
+        scenarioRunBtn.disabled = true;
+        setScenarioStatus('完成单食堂仿真后可运行建议方案。');
+        return;
+    }
+
+    const suggestion = window.CanteenApp.AnalysisCharts.buildSuggestedSingleConfig(
+        state.lastSingleConfig,
+        state.lastStatistics,
+    );
+    scenarioRunBtn.disabled = !suggestion.config;
+    setScenarioStatus(suggestion.summary);
+}
+
+async function runSuggestedScenario() {
+    if (state.mode !== 'single') {
+        updateScenarioActionState();
+        return;
+    }
+
+    const baselineStats = state.lastStatistics;
+    const baselineConfig = state.lastSingleConfig;
+    const suggestion = window.CanteenApp.AnalysisCharts.buildSuggestedSingleConfig(
+        baselineConfig,
+        baselineStats,
+    );
+    if (!suggestion.config) {
+        setScenarioStatus(suggestion.summary);
+        return;
+    }
+
+    const prevLabel = scenarioRunBtn.textContent;
+    scenarioRunBtn.disabled = true;
+    scenarioRunBtn.textContent = '运行中...';
+    setScenarioStatus('正在按建议方案重跑单食堂仿真...');
+    try {
+        await apiPost('/simulation/reset');
+        const configRes = await apiPost('/config', suggestion.config);
+        if (!configRes.ok) throw new Error(configRes.data.error || '建议方案配置失败');
+        const startRes = await apiPost('/simulation/start');
+        if (!startRes.ok) throw new Error(startRes.data.error || '建议方案启动失败');
+        const finishRes = await apiPost('/simulation/finish');
+        if (!finishRes.ok) throw new Error(finishRes.data.error || '建议方案结算失败');
+
+        const adjustedStats = finishRes.data;
+        state.lastSingleConfig = suggestion.config;
+        showStatistics(adjustedStats);
+        renderScenarioComparison(baselineStats, adjustedStats, suggestion.summary);
+        setScenarioStatus('建议方案已完成，可对照三项关键指标。');
+    } catch (err) {
+        console.error(err);
+        setScenarioStatus(err.message || '建议方案运行失败');
+    } finally {
+        scenarioRunBtn.textContent = prevLabel;
+        const nextSuggestion = window.CanteenApp.AnalysisCharts.buildSuggestedSingleConfig(
+            state.lastSingleConfig,
+            state.lastStatistics,
+        );
+        scenarioRunBtn.disabled = !nextSuggestion.config;
+    }
 }
 
 window.addEventListener('resize', () => {
@@ -646,3 +751,5 @@ window.CanteenApp.renderCharts = renderCharts;
 window.CanteenApp.disposeCharts = disposeCharts;
 window.CanteenApp.applyViewState = applyViewState;
 window.CanteenApp.syncModeForms = syncModeForms;
+window.CanteenApp.runSuggestedScenario = runSuggestedScenario;
+window.CanteenApp.showStatistics = showStatistics;

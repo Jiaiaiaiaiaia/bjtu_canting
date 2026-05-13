@@ -196,6 +196,129 @@
             .map(withoutPriority);
     }
 
+    function cloneSingleConfig(config) {
+        return {
+            window_count: toNumber(config.window_count),
+            seat_count: toNumber(config.seat_count),
+            avg_serve_time: toNumber(config.avg_serve_time),
+            avg_eat_time: toNumber(config.avg_eat_time),
+            arrival_rate: toNumber(config.arrival_rate),
+            total_time: toNumber(config.total_time),
+        };
+    }
+
+    function buildSuggestedSingleConfig(config, stats) {
+        if (!config) {
+            return { config: null, summary: '缺少基线配置，无法生成建议方案。', primaryAction: null };
+        }
+
+        const base = cloneSingleConfig(config);
+        const next = { ...base };
+        const primary = buildInterventions(stats || {})[0] || {};
+        const changes = [];
+
+        if (primary.title === '增开服务窗口') {
+            const windowStep = Math.max(1, Math.ceil(base.window_count * 0.25));
+            const nextWindowCount = Math.min(20, base.window_count + windowStep);
+            if (nextWindowCount > base.window_count) {
+                next.window_count = nextWindowCount;
+                changes.push(`窗口 ${base.window_count} -> ${nextWindowCount}`);
+            } else {
+                const nextServeTime = Math.max(5, +(base.avg_serve_time * 0.9).toFixed(1));
+                if (nextServeTime < base.avg_serve_time) {
+                    next.avg_serve_time = nextServeTime;
+                    changes.push(`打饭 ${base.avg_serve_time}s -> ${nextServeTime}s`);
+                }
+            }
+        } else if (primary.title === '增加座位供给') {
+            const seatStep = Math.max(10, Math.ceil(base.seat_count * 0.2));
+            const nextSeatCount = Math.min(1000, base.seat_count + seatStep);
+            if (nextSeatCount > base.seat_count) {
+                next.seat_count = nextSeatCount;
+                changes.push(`座位 ${base.seat_count} -> ${nextSeatCount}`);
+            } else {
+                const nextEatTime = Math.max(1, +(base.avg_eat_time * 0.9).toFixed(1));
+                if (nextEatTime < base.avg_eat_time) {
+                    next.avg_eat_time = nextEatTime;
+                    changes.push(`就餐 ${base.avg_eat_time}min -> ${nextEatTime}min`);
+                }
+            }
+        }
+
+        if (!changes.length) {
+            return {
+                config: null,
+                summary: '当前配置暂无需要自动重跑的干预，可作为对照组。',
+                primaryAction: primary.title || null,
+            };
+        }
+
+        return {
+            config: next,
+            summary: `建议方案：${changes.join('，')}`,
+            primaryAction: primary.title,
+        };
+    }
+
+    function formatSignedSeconds(value) {
+        const prefix = value > 0 ? '+' : '';
+        return `${prefix}${formatSeconds(value)}`;
+    }
+
+    function formatSignedInteger(value) {
+        const rounded = Math.round(toNumber(value));
+        const prefix = rounded > 0 ? '+' : '';
+        return `${prefix}${rounded}`;
+    }
+
+    function formatSignedPercent(value) {
+        const number = toNumber(value);
+        const prefix = number > 0 ? '+' : '';
+        return `${prefix}${number.toFixed(1)}%`;
+    }
+
+    function comparisonTone(delta, lowerIsBetter = true) {
+        if (Math.abs(delta) < 0.01) return 'flat';
+        const improved = lowerIsBetter ? delta < 0 : delta > 0;
+        return improved ? 'improved' : 'worse';
+    }
+
+    function buildScenarioComparison(baselineStats, adjustedStats) {
+        const baselineWait = toNumber(baselineStats && baselineStats.avg_waiting_time);
+        const adjustedWait = toNumber(adjustedStats && adjustedStats.avg_waiting_time);
+        const baselinePeak = toNumber(baselineStats && baselineStats.peak_queue_length);
+        const adjustedPeak = toNumber(adjustedStats && adjustedStats.peak_queue_length);
+        const baselineSeat = toNumber(baselineStats && baselineStats.seat_utilization);
+        const adjustedSeat = toNumber(adjustedStats && adjustedStats.seat_utilization);
+
+        return [
+            {
+                key: 'wait',
+                label: '平均等待',
+                baseline: formatSeconds(baselineWait),
+                adjusted: formatSeconds(adjustedWait),
+                delta: formatSignedSeconds(adjustedWait - baselineWait),
+                tone: comparisonTone(adjustedWait - baselineWait),
+            },
+            {
+                key: 'peak',
+                label: '峰值排队',
+                baseline: `${Math.round(baselinePeak)} 人`,
+                adjusted: `${Math.round(adjustedPeak)} 人`,
+                delta: formatSignedInteger(adjustedPeak - baselinePeak),
+                tone: comparisonTone(adjustedPeak - baselinePeak),
+            },
+            {
+                key: 'seat',
+                label: '座位利用率',
+                baseline: formatPercent(baselineSeat),
+                adjusted: formatPercent(adjustedSeat),
+                delta: formatSignedPercent(adjustedSeat - baselineSeat),
+                tone: comparisonTone(adjustedSeat - baselineSeat),
+            },
+        ];
+    }
+
     function setText(doc, id, value) {
         const element = doc.getElementById(id);
         if (element) element.textContent = value;
@@ -245,6 +368,40 @@
 
         const primary = interventions[0];
         setText(doc, 'intervention-summary', primary ? `建议优先：${primary.title}` : '暂无建议');
+    }
+
+    function renderScenarioComparison(baselineStats, adjustedStats, summary, deps) {
+        const doc = deps.document;
+        const box = doc.getElementById('scenario-comparison');
+        if (box) box.hidden = false;
+        setText(doc, 'scenario-adjustment', summary || '建议方案已完成。');
+
+        const metricDom = {
+            wait: {
+                baseline: 'scenario-baseline-wait',
+                adjusted: 'scenario-adjusted-wait',
+                delta: 'scenario-delta-wait',
+            },
+            peak: {
+                baseline: 'scenario-baseline-peak',
+                adjusted: 'scenario-adjusted-peak',
+                delta: 'scenario-delta-peak',
+            },
+            seat: {
+                baseline: 'scenario-baseline-seat',
+                adjusted: 'scenario-adjusted-seat',
+                delta: 'scenario-delta-seat',
+            },
+        };
+
+        buildScenarioComparison(baselineStats || {}, adjustedStats || {}).forEach(item => {
+            const ids = metricDom[item.key];
+            if (!ids) return;
+            setText(doc, ids.baseline, item.baseline);
+            setText(doc, ids.adjusted, item.adjusted);
+            const delta = setText(doc, ids.delta, item.delta);
+            if (delta) delta.className = `scenario-delta ${item.tone}`;
+        });
     }
 
     function renderCharts(stats, deps) {
@@ -325,5 +482,8 @@
         renderDiagnosis,
         buildInterventions,
         renderInterventions,
+        buildSuggestedSingleConfig,
+        buildScenarioComparison,
+        renderScenarioComparison,
     };
 })();

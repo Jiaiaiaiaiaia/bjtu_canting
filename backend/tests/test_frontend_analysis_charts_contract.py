@@ -55,6 +55,38 @@ def test_analysis_page_styles_intervention_recommendations():
         assert snippet in STYLE_CSS
 
 
+def test_analysis_page_has_scenario_comparison_panel():
+    for snippet in (
+        'id="scenario-panel"',
+        'id="scenario-run-btn"',
+        'id="scenario-status"',
+        'id="scenario-comparison"',
+        'id="scenario-adjustment"',
+        'id="scenario-baseline-wait"',
+        'id="scenario-adjusted-wait"',
+        'id="scenario-delta-wait"',
+        'id="scenario-baseline-peak"',
+        'id="scenario-adjusted-peak"',
+        'id="scenario-delta-peak"',
+        'id="scenario-baseline-seat"',
+        'id="scenario-adjusted-seat"',
+        'id="scenario-delta-seat"',
+    ):
+        assert snippet in INDEX_HTML
+
+
+def test_analysis_page_styles_scenario_comparison():
+    for snippet in (
+        '.scenario-panel',
+        '.scenario-header',
+        '.scenario-comparison',
+        '.scenario-row',
+        '.scenario-delta',
+        '.scenario-adjustment',
+    ):
+        assert snippet in STYLE_CSS
+
+
 def test_analysis_charts_builds_diagnosis_from_existing_statistics():
     for snippet in (
         'function buildDiagnosis(stats)',
@@ -84,6 +116,24 @@ def test_analysis_charts_builds_interventions_from_existing_statistics():
         assert snippet in ANALYSIS_CHARTS_JS
 
 
+def test_analysis_charts_builds_scenario_helpers_from_existing_statistics():
+    for snippet in (
+        'function buildSuggestedSingleConfig(config, stats)',
+        'function buildScenarioComparison(baselineStats, adjustedStats)',
+        'function renderScenarioComparison(baselineStats, adjustedStats, summary, deps)',
+        'window_count',
+        'seat_count',
+        'avg_serve_time',
+        'avg_eat_time',
+        'scenario-baseline-wait',
+        'scenario-adjusted-wait',
+        'buildSuggestedSingleConfig,',
+        'buildScenarioComparison,',
+        'renderScenarioComparison,',
+    ):
+        assert snippet in ANALYSIS_CHARTS_JS
+
+
 def build_diagnosis(stats):
     script = f"""
 global.window = {{ CanteenApp: {{}} }};
@@ -107,6 +157,46 @@ global.window = {{ CanteenApp: {{}} }};
 {ANALYSIS_CHARTS_JS}
 const interventions = window.CanteenApp.AnalysisCharts.buildInterventions({json.dumps(stats)});
 console.log(JSON.stringify(interventions));
+"""
+    completed = subprocess.run(
+        ['node', '-e', script],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(completed.stdout)
+
+
+def build_suggested_config(config, stats):
+    script = f"""
+global.window = {{ CanteenApp: {{}} }};
+{ANALYSIS_CHARTS_JS}
+const suggestion = window.CanteenApp.AnalysisCharts.buildSuggestedSingleConfig(
+  {json.dumps(config)},
+  {json.dumps(stats)}
+);
+console.log(JSON.stringify(suggestion));
+"""
+    completed = subprocess.run(
+        ['node', '-e', script],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(completed.stdout)
+
+
+def build_scenario_comparison(baseline, adjusted):
+    script = f"""
+global.window = {{ CanteenApp: {{}} }};
+{ANALYSIS_CHARTS_JS}
+const comparison = window.CanteenApp.AnalysisCharts.buildScenarioComparison(
+  {json.dumps(baseline)},
+  {json.dumps(adjusted)}
+);
+console.log(JSON.stringify(comparison));
 """
     completed = subprocess.run(
         ['node', '-e', script],
@@ -182,3 +272,65 @@ def test_intervention_rules_recommend_action_for_dominant_pressure():
         'seat_utilization': 34,
     })
     assert low_pressure[0]['title'] == '保持当前配置'
+
+
+def test_suggested_single_config_adjusts_dominant_pressure_only():
+    base_config = {
+        'window_count': 4,
+        'seat_count': 100,
+        'avg_serve_time': 30,
+        'avg_eat_time': 15,
+        'arrival_rate': 5,
+        'total_time': 60,
+    }
+
+    queue_suggestion = build_suggested_config(base_config, {
+        'total_arrived': 100,
+        'total_served': 100,
+        'peak_queue_length': 35,
+        'avg_waiting_time': 140,
+        'seat_utilization': 50,
+    })
+    assert queue_suggestion['config']['window_count'] > base_config['window_count']
+    assert queue_suggestion['config']['seat_count'] == base_config['seat_count']
+    assert '窗口' in queue_suggestion['summary']
+
+    seat_suggestion = build_suggested_config(base_config, {
+        'total_arrived': 80,
+        'total_served': 80,
+        'peak_queue_length': 2,
+        'avg_waiting_time': 15,
+        'seat_utilization': 91,
+    })
+    assert seat_suggestion['config']['seat_count'] > base_config['seat_count']
+    assert seat_suggestion['config']['window_count'] == base_config['window_count']
+    assert '座位' in seat_suggestion['summary']
+
+    low_suggestion = build_suggested_config(base_config, {
+        'total_arrived': 30,
+        'total_served': 30,
+        'peak_queue_length': 1,
+        'avg_waiting_time': 8,
+        'seat_utilization': 34,
+    })
+    assert low_suggestion['config'] is None
+
+
+def test_scenario_comparison_reports_metric_deltas():
+    comparison = build_scenario_comparison(
+        {
+            'avg_waiting_time': 120,
+            'peak_queue_length': 30,
+            'seat_utilization': 90,
+        },
+        {
+            'avg_waiting_time': 75,
+            'peak_queue_length': 12,
+            'seat_utilization': 64,
+        },
+    )
+    by_key = {item['key']: item for item in comparison}
+    assert by_key['wait']['delta'] == '-45.0 s'
+    assert by_key['peak']['delta'] == '-18'
+    assert by_key['seat']['delta'] == '-26.0%'
+    assert by_key['wait']['tone'] == 'improved'

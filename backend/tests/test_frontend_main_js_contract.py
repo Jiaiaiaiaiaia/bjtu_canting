@@ -33,6 +33,8 @@ def test_main_js_state_has_campus_control_fields():
         'pendingCanteens: []',
         'campusPresetScale: null',
         "renderMode: '2d'",
+        'lastStatistics: null',
+        'lastSingleConfig: null',
     ):
         assert snippet in MAIN_JS
 
@@ -102,5 +104,30 @@ def test_main_js_keeps_compatibility_shell_for_extracted_modules():
         'window.CanteenApp.AnalysisCharts.renderStatCards(s, chartDeps())',
         'window.CanteenApp.AnalysisCharts.renderCharts(stats, chartDeps())',
         'window.CanteenApp.AnalysisCharts.disposeCharts(chartDeps())',
+    ):
+        assert snippet in MAIN_JS
+
+
+def test_main_js_runs_single_canteen_suggested_scenario_without_campus_api():
+    for snippet in (
+        "const scenarioRunBtn = document.getElementById('scenario-run-btn');",
+        'async function runSuggestedScenario()',
+        "if (state.mode !== 'single')",
+        'window.CanteenApp.AnalysisCharts.buildSuggestedSingleConfig',
+        "await apiPost('/simulation/reset')",
+        "await apiPost('/config', suggestion.config)",
+        "await apiPost('/simulation/start')",
+        "await apiPost('/simulation/finish')",
+        'renderScenarioComparison(baselineStats, adjustedStats, suggestion.summary);',
+        'function showStatistics(stats)',
+        'state.lastStatistics = stats;',
+    ):
+        assert snippet in MAIN_JS
+
+
+def test_main_js_exposes_scenario_helpers_for_contract_testing():
+    for snippet in (
+        'window.CanteenApp.runSuggestedScenario = runSuggestedScenario;',
+        'window.CanteenApp.showStatistics = showStatistics;',
     ):
         assert snippet in MAIN_JS
