@@ -71,7 +71,14 @@
                     </div>
 
                     <div id="campus-mode-form" hidden class="campus-config-panel">
-                        <label for="campus-config-json">校园联合配置 JSON</label>
+                        <div id="campus-preset-panel" class="campus-preset-panel">
+                            <button type="button" class="campus-preset-card active" data-campus-preset="default">
+                                <strong>北交大午餐高峰预设</strong>
+                                <span>明湖/学一与学四使用已采集数据；学活保留待补标记。</span>
+                            </button>
+                            <div id="pending-data-note" class="pending-data-note"></div>
+                        </div>
+                        <label for="campus-config-json">高级配置 JSON</label>
                         <textarea id="campus-config-json" spellcheck="false">{
   "campus": {
     "total_students": 180,

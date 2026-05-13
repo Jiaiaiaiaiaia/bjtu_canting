@@ -30,6 +30,23 @@ def test_main_js_state_has_campus_control_fields():
         assert snippet in MAIN_JS
 
 
+def test_main_js_loads_campus_preset_without_hiding_manual_json_edits():
+    for snippet in (
+        'let campusPresetPayload = null;',
+        'let campusConfigDirty = false;',
+        "campusConfigJson.addEventListener('input'",
+        'campusConfigDirty = true;',
+        'campusPresetPayload = null;',
+        'async function loadDefaultCampusPreset()',
+        '/campus/presets/default',
+        'campusConfigDirty = false;',
+        'async function getCampusConfigForSubmit()',
+        'if (campusConfigDirty) {',
+        'return readCampusConfig();',
+    ):
+        assert snippet in MAIN_JS
+
+
 def test_main_js_dispatches_step_by_mode():
     assert 'async function dispatchStep()' in MAIN_JS
     assert "'/campus/step?display_tick_seconds=10'" in MAIN_JS

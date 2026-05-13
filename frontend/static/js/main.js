@@ -40,6 +40,8 @@ const singleModeForm = document.getElementById('single-mode-form');
 const campusModeForm = document.getElementById('campus-mode-form');
 const campusConfigJson = document.getElementById('campus-config-json');
 const DEFAULT_CAMPUS_CONFIG = campusConfigJson ? campusConfigJson.value : '';
+let campusPresetPayload = null;
+let campusConfigDirty = false;
 
 const DEFAULTS = {
     window_count: 6,
@@ -56,9 +58,33 @@ resetBtn.addEventListener('click', () => {
         if (input) input.value = v;
     });
     if (campusConfigJson) campusConfigJson.value = DEFAULT_CAMPUS_CONFIG;
+    campusPresetPayload = null;
+    campusConfigDirty = false;
     const singleModeRadio = document.getElementById('simulation-mode-single');
     if (singleModeRadio) singleModeRadio.checked = true;
+    renderPendingDataNote([]);
     syncModeForms();
+});
+
+if (campusConfigJson) {
+    campusConfigJson.addEventListener('input', () => {
+        campusConfigDirty = true;
+        campusPresetPayload = null;
+    });
+}
+
+document.querySelectorAll('[data-campus-preset]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        document.querySelectorAll('[data-campus-preset]').forEach(item => {
+            item.classList.toggle('active', item === btn);
+        });
+        try {
+            await loadDefaultCampusPreset();
+        } catch (err) {
+            console.error(err);
+            alert(err.message || '校园预设加载失败');
+        }
+    });
 });
 
 modeRadios.forEach(radio => {
@@ -75,7 +101,7 @@ configForm.addEventListener('submit', async e => {
 
     try {
         const payload = nextMode === 'campus'
-            ? readCampusConfig()
+            ? await getCampusConfigForSubmit()
             : readSingleConfig();
         const apiBase = nextMode === 'campus' ? '/campus' : '/simulation';
         await resetActiveSession();
@@ -111,6 +137,9 @@ function syncModeForms() {
     const isCampus = selectedMode() === 'campus';
     if (singleModeForm) singleModeForm.hidden = isCampus;
     if (campusModeForm) campusModeForm.hidden = !isCampus;
+    if (isCampus && !campusPresetPayload && !campusConfigDirty) {
+        loadDefaultCampusPreset().catch(err => console.error(err));
+    }
 }
 
 function readSingleConfig() {
@@ -130,6 +159,37 @@ function readCampusConfig() {
     } catch (err) {
         throw new Error('校园联合配置 JSON 格式错误');
     }
+}
+
+async function loadDefaultCampusPreset() {
+    const res = await fetch(`${API_BASE}/campus/presets/default`);
+    if (!res.ok) throw new Error('校园预设加载失败');
+    const data = await res.json();
+    campusPresetPayload = data.config;
+    if (campusConfigJson) {
+        campusConfigJson.value = JSON.stringify(data.config, null, 2);
+        campusConfigDirty = false;
+    }
+    renderPendingDataNote(data.pending_canteens || []);
+    return data.config;
+}
+
+function renderPendingDataNote(pending) {
+    const node = document.getElementById('pending-data-note');
+    if (!node) return;
+    node.textContent = pending.length
+        ? `待补数据：${pending.join(', ')}。演示中不伪造该食堂容量。`
+        : '全部食堂数据已回填。';
+}
+
+async function getCampusConfigForSubmit() {
+    if (campusConfigDirty) {
+        return readCampusConfig();
+    }
+    if (campusPresetPayload) {
+        return campusPresetPayload;
+    }
+    return await loadDefaultCampusPreset();
 }
 
 async function resetActiveSession() {

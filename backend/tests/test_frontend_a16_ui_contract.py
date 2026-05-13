@@ -17,6 +17,9 @@ def test_a16_html_adds_mode_forms_and_campus_controls():
         'value="campus"',
         'id="single-mode-form"',
         'id="campus-mode-form" hidden',
+        'id="campus-preset-panel"',
+        'data-campus-preset="default"',
+        'id="pending-data-note"',
         'id="campus-config-json"',
         'id="view-switcher" hidden',
         'data-view="campus"',
@@ -40,6 +43,12 @@ def test_a16_main_js_binds_mode_and_view_controls():
         'function selectedMode()',
         'function syncModeForms()',
         'function readCampusConfig()',
+        'function loadDefaultCampusPreset()',
+        'function renderPendingDataNote(',
+        'function getCampusConfigForSubmit()',
+        '/campus/presets/default',
+        'pending_canteens',
+        'campusConfigDirty',
         'function resetActiveSession()',
         'function applyViewState()',
         '/simulation/status',
@@ -60,7 +69,7 @@ def test_a16_main_js_binds_mode_and_view_controls():
 def test_a16_main_js_parses_payload_before_resetting_session():
     payload_snippet = (
         "const payload = nextMode === 'campus'\n"
-        "            ? readCampusConfig()\n"
+        "            ? await getCampusConfigForSubmit()\n"
         "            : readSingleConfig();"
     )
     assert payload_snippet in MAIN_JS
@@ -88,7 +97,7 @@ def test_a16_main_js_only_commits_mode_after_successful_start():
     next_mode_snippet = "const nextMode = selectedMode();"
     payload_snippet = (
         "const payload = nextMode === 'campus'\n"
-        "            ? readCampusConfig()\n"
+        "            ? await getCampusConfigForSubmit()\n"
         "            : readSingleConfig();"
     )
     assert next_mode_snippet in submit_block
@@ -106,6 +115,9 @@ def test_a16_css_styles_new_campus_ui_shell():
         '.mode-selector',
         '.single-mode-form',
         '.campus-config-panel',
+        '.campus-preset-panel',
+        '.campus-preset-card',
+        '.pending-data-note',
         '.view-switcher',
         '.campus-overview-panel',
         '.canteen-switcher',

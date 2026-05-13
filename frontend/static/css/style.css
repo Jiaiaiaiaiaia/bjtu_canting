@@ -243,13 +243,59 @@ button:disabled {
 .campus-config-panel {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }
 
 .campus-config-panel label {
     font-size: 11px;
     color: var(--c-text-secondary);
     font-weight: 500;
+}
+
+.campus-preset-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.campus-preset-card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 12px 14px;
+    color: var(--c-text);
+    background: #fff;
+    border: 1px solid var(--c-border-dark);
+    border-radius: var(--radius-md);
+    text-align: left;
+}
+
+.campus-preset-card strong {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.campus-preset-card span {
+    font-size: 12px;
+    color: var(--c-text-secondary);
+    line-height: 1.45;
+}
+
+.campus-preset-card.active {
+    border-color: var(--c-primary);
+    background: var(--c-primary-light);
+}
+
+.pending-data-note {
+    padding: 8px 10px;
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    line-height: 1.45;
 }
 
 .campus-config-panel textarea {
