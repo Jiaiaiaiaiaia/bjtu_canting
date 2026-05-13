@@ -8,6 +8,11 @@
 - Created `docs/superpowers/plans/2026-05-13-canteen-demo-polish-plan.md` for the focused demo-polish route: cleanup guardrail, campus preset loading, teacher-friendly preset UI, browser E2E evidence, optional Three.js integration, and docs/demo script.
 - Updated `task_plan.md` with the new Canteen demo polish plan and preserved the external Design Culture PPT boundary.
 - Incorporated plan-review fixes before implementation: replaced the final broad stage command with explicit-path staging, added guardrail sync checks for `AGENTS.md` / `CLAUDE.md` / `agent.md`, made 学活 a visible-only pending point outside runtime simulation, preserved field-pending status for 明湖/学一 and 学四, added `campusConfigDirty` handling for manual JSON edits, required Three.js importmap/module loading, and made browser E2E evidence teacher-verifiable with screenshot paths, console-error count, canvas nonblank checks, and `total_arrived == total_served`.
+- Implemented the default campus preset endpoint and loader. Runtime `config.canteens` includes 明湖/学一 and 学四 only; `visible_canteens` still exposes 学活 as pending metadata.
+- Replaced the campus JSON-first entry with a teacher-facing preset card, dirty JSON fallback, and pending-data note. The static textarea no longer embeds 学活 placeholder capacity.
+- Added demo-scale campus runtime values plus source-scale metadata so browser finish is suitable for live demonstration.
+- Recorded real browser E2E evidence with Headless Chrome/CDP: console errors 0; single-canteen `72/72`; campus preset `21/21`; 3D WebGL canvas nonblank with sampled pixels `50869`.
+- Integrated optional Three.js 3D view with importmap/module loading and 2D fallback.
 
 ## 2026-05-12
 

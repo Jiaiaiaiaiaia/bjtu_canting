@@ -14,11 +14,11 @@ Goal: Turn the current Canteen simulation into a teacher-facing demo with credib
 
 1. Complete - Delete external `outputs/` artifacts from this repo workspace.
 2. Complete - Write and review the focused implementation plan.
-3. Pending - Add cleanup guardrails and default campus preset loading while keeping 学活 pending.
-4. Pending - Replace campus JSON-first UX with a teacher-friendly preset entry.
-5. Pending - Run and record real browser E2E checks.
-6. Pending - Integrate the V7 Three.js prototype as optional 3D view with 2D fallback.
-7. Pending - Update README, demo script, and phase evidence docs.
+3. Complete - Add cleanup guardrails and default campus preset loading while keeping 学活 pending.
+4. Complete - Replace campus JSON-first UX with a teacher-friendly preset entry.
+5. Complete - Run and record real browser E2E checks.
+6. Complete - Integrate the V7 Three.js prototype as optional 3D view with 2D fallback.
+7. Complete - Update README, demo script, and phase evidence docs.
 
 ## Notes
 
@@ -26,6 +26,8 @@ Goal: Turn the current Canteen simulation into a teacher-facing demo with credib
 - New plan path: `docs/superpowers/plans/2026-05-13-canteen-demo-polish-plan.md`.
 - `outputs/` belonged to the external Design Culture PPT work and was deleted from the workspace.
 - Plan review tightened the risky boundaries: no final `git add .`; default campus simulation excludes pending 学活 from runtime routing/statistics; frontend JSON edits must bypass cached presets; Three.js integration must use explicit importmap/module loading; browser E2E evidence must include screenshots, console-error count, canvas nonblank checks, and final served/arrived equality.
+- Implementation note: default campus preset is demo-scale at runtime and keeps source-scale metadata. 学活 is visible as a pending marker through `visible_canteens`, but it is not in runtime `config.canteens`.
+- Browser evidence is recorded in `docs/phase3/browser_e2e_check.md`; screenshots and JSON evidence are under `docs/phase3/screenshots/`.
 
 ---
 
