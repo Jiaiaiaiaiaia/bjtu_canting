@@ -239,6 +239,14 @@ const renderSwitcher = document.getElementById('render-switcher');
 const threeStage = document.getElementById('three-stage');
 const SPEED_MAP = [1, 2, 5, 10];
 
+function rendererDeps() {
+    return { canvas, ctx, state };
+}
+
+function chartDeps() {
+    return { document, echarts, state };
+}
+
 if (viewSwitcher) {
     viewSwitcher.querySelectorAll('button[data-view]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -462,173 +470,19 @@ function updateInfoPanel(data) {
 
 // ================================== Canvas 食堂布局
 function drawCanteen(data) {
-    const W = canvas.width;
-    const H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
-
-    drawBackground(W, H);
-    const windowBoxes = drawWindows(data.windows, W);
-    drawSeats(data.seats, W, H);
-    drawWaitingQueueLabel(data.waiting_queue_length, W, H);
-    // 用 data.students 驱动每个学生的圆点（含帧间插值），呈现"人员流动"
-    drawStudentDots(data, windowBoxes, W, H);
-}
-
-function drawBackground(W, H) {
-    // 外框
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(12, 12, W - 24, H - 24);
-    ctx.font = '12px "PingFang SC", sans-serif';
-    ctx.fillStyle = '#64748b';
-    ctx.textAlign = 'left';
+    window.CanteenApp.CanvasRenderer.drawCanteen(data, rendererDeps());
 }
 
 function drawWindows(windows, W) {
-    if (!windows || !windows.length) return [];
-    const count = windows.length;
-    const winW = 80, winH = 50;
-    const gap = Math.max(10, (W - 60 - count * winW) / (count + 1));
-    const baseX = (W - (count * winW + (count - 1) * gap)) / 2;
-    const y = 50;
-    const boxes = [];
-
-    windows.forEach((w, i) => {
-        const x = baseX + i * (winW + gap);
-        // 窗口框
-        const color = w.is_serving ? '#b91c1c' : '#94a3b8';
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y, winW, winH);
-        ctx.strokeStyle = '#991b1b';
-        ctx.strokeRect(x, y, winW, winH);
-        ctx.fillStyle = '#fff';
-        ctx.font = '13px "PingFang SC", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(`窗口 ${w.id + 1}`, x + winW / 2, y + 22);
-        ctx.font = '11px "PingFang SC", sans-serif';
-        ctx.fillText(`已服务 ${w.total_served}`, x + winW / 2, y + 40);
-
-        const queueX = x + winW / 2;
-        const queueY = y + winH + 12;
-        // 队列圆点改由 drawStudentDots 按 student.id 渲染；这里只补"+N"溢出标记
-        if (w.queue_length > 12) {
-            ctx.fillStyle = '#64748b';
-            ctx.font = '11px sans-serif';
-            ctx.fillText(`+${w.queue_length - 12}`, queueX, queueY + 14 + 12 * 14 + 4);
-        }
-
-        boxes.push({ id: w.id, x, y, w: winW, h: winH, queueX, queueY });
-    });
-
-    return boxes;
+    return window.CanteenApp.CanvasRenderer.drawWindows(windows, W, rendererDeps());
 }
 
 function drawSeats(seats, W, H) {
-    if (!seats || !seats.length) return [];
-    const total = seats.length;
-    const cols = Math.min(20, Math.ceil(Math.sqrt(total * 1.8)));
-    const rows = Math.ceil(total / cols);
-    const size = 18;
-    const gap = 5;
-    const areaW = cols * (size + gap) - gap;
-    const startX = (W - areaW) / 2;
-    const startY = 260;
-
-    seats.forEach((s, i) => {
-        const r = Math.floor(i / cols);
-        const c = i % cols;
-        const x = startX + c * (size + gap);
-        const y = startY + r * (size + gap);
-        if (s.status === 'occupied') {
-            // 颜色深浅表示剩余就餐时间（可视化热力）
-            const intensity = Math.min(1, s.remaining_time / (30 * 60));
-            const g = Math.floor(120 - 60 * intensity);
-            ctx.fillStyle = `rgb(239, ${g}, 68)`;
-        } else {
-            ctx.fillStyle = '#d1fae5';
-        }
-        ctx.fillRect(x, y, size, size);
-        ctx.strokeStyle = '#94a3b8';
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(x, y, size, size);
-    });
-
-    return { startX, startY, cols, size, gap };
-}
-
-function drawWaitingQueueLabel(count, W, H) {
-    if (!count) return;
-    ctx.fillStyle = '#64748b';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(`等位队列：${count} 人`, W - 30, H - 40);
-    if (count > 10) {
-        ctx.fillText(`+${count - 10}`, W - 30, H - 4);
-    }
-}
-
-// ----- 学生级渲染：把 backend 算好的 students payload 真正画出来 -----
-function computeStudentTargets(students, windowBoxes, W, H) {
-    if (!students) return {};
-    const boxByWid = {};
-    windowBoxes.forEach(b => { boxByWid[b.id] = b; });
-
-    const targets = {};
-    const queueIdxByWindow = {};
-    for (const s of students) {
-        if (s.position === 'window_queue') {
-            const wid = s.position_detail;
-            const idx = (queueIdxByWindow[wid] = (queueIdxByWindow[wid] || 0));
-            queueIdxByWindow[wid] = idx + 1;
-            const box = boxByWid[wid];
-            if (!box || idx >= 12) continue;  // 超出 12 个由 +N 标记替代
-            targets[s.id] = {
-                x: box.queueX,
-                y: box.queueY + 14 + idx * 14,
-                color: '#ff9800',
-            };
-        } else if (s.position === 'being_served') {
-            const box = boxByWid[s.position_detail];
-            if (!box) continue;
-            targets[s.id] = {
-                x: box.x + box.w / 2,
-                y: box.y + box.h - 8,
-                color: '#fbbf24',
-            };
-        } else if (s.position === 'waiting_queue') {
-            const idx = typeof s.position_detail === 'number' ? s.position_detail : 0;
-            if (idx >= 10) continue;
-            targets[s.id] = {
-                x: W - 40 + (idx % 5) * 12,
-                y: H - 28 + Math.floor(idx / 5) * 12,
-                color: '#9333ea',
-            };
-        }
-        // seated 由 drawSeats 渲染；left/unknown 不画
-    }
-    return targets;
+    return window.CanteenApp.CanvasRenderer.drawSeats(seats, W, H, rendererDeps());
 }
 
 function drawStudentDots(data, windowBoxes, W, H) {
-    const targets = computeStudentTargets(data.students, windowBoxes, W, H);
-    const prev = state.studentPrev;
-    const next = {};
-    const lerp = 0.4;  // 帧间插值系数：值越大动作越快
-    for (const id in targets) {
-        const t = targets[id];
-        const p = prev[id];
-        const x = p ? p.x + (t.x - p.x) * lerp : t.x;
-        const y = p ? p.y + (t.y - p.y) * lerp : t.y;
-        ctx.fillStyle = t.color;
-        ctx.beginPath();
-        ctx.arc(x, y, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(15, 23, 42, 0.25)';
-        ctx.lineWidth = 0.6;
-        ctx.stroke();
-        next[id] = { x, y };
-    }
-    state.studentPrev = next;
+    window.CanteenApp.CanvasRenderer.drawStudentDots(data, windowBoxes, W, H, rendererDeps());
 }
 
 
@@ -652,85 +506,19 @@ async function loadStatistics() {
 }
 
 function renderStatCards(s) {
-    document.getElementById('stat-total-arrived').textContent = s.total_arrived;
-    document.getElementById('stat-total-served').textContent = s.total_served;
-    document.getElementById('stat-avg-waiting').textContent = `${s.avg_waiting_time.toFixed(1)} s`;
-    document.getElementById('stat-avg-eating').textContent = `${(s.avg_eating_time / 60).toFixed(1)} min`;
-    document.getElementById('stat-peak').textContent = s.peak_queue_length;
-    document.getElementById('stat-seat-utilization').textContent = `${s.seat_utilization.toFixed(1)}%`;
-}
-
-function normalizeWindowServed(windowServed) {
-    if (Array.isArray(windowServed)) {
-        return windowServed.map((value, i) => ({ name: `窗口 ${i + 1}`, value }));
-    }
-    if (!windowServed || typeof windowServed !== 'object') return [];
-    return Object.entries(windowServed).flatMap(([canteenId, values]) =>
-        (values || []).map((value, i) => ({ name: `${canteenId} 窗口 ${i + 1}`, value }))
-    );
+    window.CanteenApp.AnalysisCharts.renderStatCards(s, chartDeps());
 }
 
 function renderCharts(stats) {
-    disposeCharts();
-    const windowSeries = normalizeWindowServed(stats.window_served);
-
-    state.charts.window = echarts.init(document.getElementById('window-chart'));
-    state.charts.window.setOption({
-        tooltip: { trigger: 'axis' },
-        grid: { left: 40, right: 20, top: 20, bottom: 30 },
-        xAxis: { type: 'category', data: windowSeries.map(item => item.name) },
-        yAxis: { type: 'value' },
-        series: [{ type: 'bar', data: windowSeries.map(item => item.value), itemStyle: { color: '#b91c1c' } }],
-    });
-
-    state.charts.pie = echarts.init(document.getElementById('pie-chart'));
-    state.charts.pie.setOption({
-        tooltip: { trigger: 'item' },
-        legend: { bottom: 0 },
-        series: [{
-            type: 'pie',
-            radius: ['40%', '70%'],
-            data: windowSeries.map(item => ({ value: item.value, name: item.name })),
-        }],
-    });
-
-    const qt = stats.queue_timeline || { x: [], y: [] };
-    state.charts.queue = echarts.init(document.getElementById('queue-chart'));
-    state.charts.queue.setOption({
-        tooltip: { trigger: 'axis' },
-        grid: { left: 40, right: 20, top: 20, bottom: 30 },
-        xAxis: { type: 'category', data: qt.x.map(x => `${x}分`) },
-        yAxis: { type: 'value' },
-        series: [{
-            type: 'line', smooth: true, data: qt.y,
-            areaStyle: { color: 'rgba(255, 152, 0, 0.2)' },
-            itemStyle: { color: '#ff9800' },
-        }],
-    });
-
-    const st = stats.seat_util_timeline || { x: [], y: [] };
-    state.charts.seat = echarts.init(document.getElementById('seat-chart'));
-    state.charts.seat.setOption({
-        tooltip: { trigger: 'axis', formatter: '{b}：{c}%' },
-        grid: { left: 40, right: 20, top: 20, bottom: 30 },
-        xAxis: { type: 'category', data: st.x.map(x => `${x}分`) },
-        yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
-        series: [{
-            type: 'line', smooth: true, data: st.y,
-            areaStyle: { color: 'rgba(76, 175, 80, 0.25)' },
-            itemStyle: { color: '#4CAF50' },
-        }],
-    });
+    window.CanteenApp.AnalysisCharts.renderCharts(stats, chartDeps());
 }
 
 function disposeCharts() {
-    Object.values(state.charts).forEach(c => c && c.dispose());
-    state.charts = {};
+    window.CanteenApp.AnalysisCharts.disposeCharts(chartDeps());
 }
 
 window.addEventListener('resize', () => {
-    Object.values(state.charts).forEach(c => c && c.resize());
-    if (state.historyChart) state.historyChart.resize();
+    window.CanteenApp.AnalysisCharts.resizeCharts(chartDeps());
 });
 
 // ================================== 历史记录
@@ -833,22 +621,7 @@ function historyTotals(snapshot) {
 
 // ================================== 图例栏
 const legendBar = document.getElementById('canvas-legend-bar');
-if (legendBar) {
-    const items = [
-        { color: '#b91c1c', text: '占用窗口' },
-        { color: '#94a3b8', text: '空闲窗口' },
-        { color: '#ff9800', text: '排队' },
-        { color: '#fbbf24', text: '打饭' },
-        { color: '#9333ea', text: '等位' },
-        { color: '#ef4444', text: '就餐中' },
-        { color: '#d1fae5', text: '空座' },
-        { color: 'linear-gradient(90deg,#ef4444,#fde68a)', text: '热力(剩余时间)' },
-    ];
-    legendBar.innerHTML = items.map(it =>
-        `<span style="display:inline-flex;align-items:center;gap:4px;">` +
-        `<span style="width:10px;height:10px;background:${it.color};border-radius:2px;"></span>${it.text}</span>`
-    ).join('');
-}
+window.CanteenApp.CanvasRenderer.renderLegendBar(legendBar);
 
 // ================================== 工具
 async function apiPost(path, body) {

@@ -8,6 +8,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MAIN_JS = (REPO_ROOT / 'frontend' / 'static' / 'js' / 'main.js').read_text(encoding='utf-8')
+INDEX_HTML = (REPO_ROOT / 'frontend' / 'templates' / 'index.html').read_text(encoding='utf-8')
+CANVAS_RENDERER_JS = REPO_ROOT / 'frontend' / 'static' / 'js' / 'canvas_renderer.js'
+ANALYSIS_CHARTS_JS = REPO_ROOT / 'frontend' / 'static' / 'js' / 'analysis_charts.js'
 
 
 def test_main_js_exposes_canteen_app_namespace():
@@ -73,3 +76,31 @@ def test_main_js_keeps_single_canteen_draw_helpers_available():
     for helper in ('drawWindows', 'drawSeats', 'drawStudentDots'):
         assert f'function {helper}(' in MAIN_JS
         assert f'window.CanteenApp.{helper} = {helper};' in MAIN_JS
+
+
+def test_frontend_loads_extracted_rendering_modules_before_main_js():
+    assert CANVAS_RENDERER_JS.exists()
+    assert ANALYSIS_CHARTS_JS.exists()
+    assert "filename='js/canvas_renderer.js'" in INDEX_HTML
+    assert "filename='js/analysis_charts.js'" in INDEX_HTML
+    assert INDEX_HTML.index("filename='js/canvas_renderer.js'") < INDEX_HTML.index(
+        "filename='js/main.js'"
+    )
+    assert INDEX_HTML.index("filename='js/analysis_charts.js'") < INDEX_HTML.index(
+        "filename='js/main.js'"
+    )
+
+
+def test_main_js_keeps_compatibility_shell_for_extracted_modules():
+    for snippet in (
+        'function rendererDeps()',
+        'window.CanteenApp.CanvasRenderer.drawCanteen(data, rendererDeps())',
+        'window.CanteenApp.CanvasRenderer.drawWindows(windows, W, rendererDeps())',
+        'window.CanteenApp.CanvasRenderer.drawSeats(seats, W, H, rendererDeps())',
+        'window.CanteenApp.CanvasRenderer.drawStudentDots(data, windowBoxes, W, H, rendererDeps())',
+        'function chartDeps()',
+        'window.CanteenApp.AnalysisCharts.renderStatCards(s, chartDeps())',
+        'window.CanteenApp.AnalysisCharts.renderCharts(stats, chartDeps())',
+        'window.CanteenApp.AnalysisCharts.disposeCharts(chartDeps())',
+    ):
+        assert snippet in MAIN_JS
