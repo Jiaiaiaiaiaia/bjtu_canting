@@ -7,9 +7,14 @@ let scene = null;
 let camera = null;
 let controls = null;
 let contentGroup = null;
+let webglAvailable = true;
 
 function init(container) {
     if (!container) return;
+    if (!webglAvailable) {
+        showFallback(container);
+        return;
+    }
     if (containerEl === container && renderer) {
         resize();
         return;
@@ -28,6 +33,7 @@ function init(container) {
             preserveDrawingBuffer: true,
         });
     } catch (err) {
+        webglAvailable = false;
         showFallback(container);
         scene = null;
         camera = null;
@@ -78,6 +84,7 @@ function resize() {
 }
 
 function showFallback(container) {
+    if (!container) return;
     container.innerHTML = '<div class="three-fallback">当前环境无法创建 WebGL 上下文，已保留 2D 视图。</div>';
 }
 
@@ -263,6 +270,10 @@ function renderCanteen(snapshot, appState) {
 
 function render(snapshot, appState) {
     if (!renderer) init(document.getElementById('three-stage'));
+    if (!webglAvailable || !renderer || !contentGroup) {
+        showFallback(document.getElementById('three-stage'));
+        return;
+    }
     clearContent();
     if (appState?.view === 'canteen') {
         renderCanteen(snapshot, appState || {});

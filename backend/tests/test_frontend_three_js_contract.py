@@ -21,3 +21,16 @@ def test_scene3d_exposes_canteen_app_3d_api():
         'pendingCanteens',
     ):
         assert snippet in source
+
+
+def test_scene3d_render_returns_to_fallback_when_webgl_is_unavailable():
+    source = SCENE3D_JS.read_text(encoding='utf-8')
+
+    for snippet in (
+        'let webglAvailable = true;',
+        'webglAvailable = false;',
+        'if (!webglAvailable || !renderer || !contentGroup) {',
+        "showFallback(document.getElementById('three-stage'));",
+        'return;',
+    ):
+        assert snippet in source
