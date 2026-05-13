@@ -17,11 +17,13 @@
   - 单食堂：`total_arrived=72`，`total_served=72`
   - 校园预设：`total_arrived=21`，`total_served=21`
   - 校园地图：3 个食堂 marker，其中学活为 pending marker；runtime marker 为明湖/学一与学四。
+  - Three.js：WebGL canvas 非空，sampled nonblank pixels=`50869`，切回 2D 后常规 canvas 恢复。
 - 截图证据：
   - `docs/phase3/screenshots/single-flow-analysis.png`
   - `docs/phase3/screenshots/campus-map.png`
   - `docs/phase3/screenshots/campus-canteen-floor.png`
   - `docs/phase3/screenshots/campus-analysis.png`
+  - `docs/phase3/screenshots/campus-3d.png`
 
 ## 环境与限制
 

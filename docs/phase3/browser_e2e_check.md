@@ -30,10 +30,21 @@ Browser: Headless Chrome via CDP
 ## Verification Artifacts
 
 - `docs/phase3/screenshots/e2e-result.json`
+- `docs/phase3/screenshots/three-result.json`
 - `docs/phase3/screenshots/single-flow-analysis.png`
 - `docs/phase3/screenshots/campus-map.png`
 - `docs/phase3/screenshots/campus-canteen-floor.png`
 - `docs/phase3/screenshots/campus-analysis.png`
+- `docs/phase3/screenshots/campus-3d.png`
+
+## Three.js View Check
+
+- Result: passed.
+- Console errors: 0.
+- WebGL canvas nonblank: passed, sampled nonblank pixels `50869`.
+- Canvas size: `1204 x 676`.
+- 2D fallback: switching back to 2D restored the regular canvas.
+- Screenshot: `docs/phase3/screenshots/campus-3d.png`.
 
 ## Open Issues
 

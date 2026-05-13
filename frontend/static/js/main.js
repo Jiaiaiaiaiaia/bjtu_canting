@@ -11,6 +11,7 @@ const state = {
     visibleCanteens: [],
     pendingCanteens: [],
     campusPresetScale: null,
+    renderMode: '2d',
     lastData: null,
     timer: null,
     speed: 2,
@@ -234,6 +235,8 @@ const canteenSwitcher = document.getElementById('canteen-switcher');
 const campusMapContainer = document.getElementById('campus-map-container');
 const floorTabs = document.getElementById('floor-tabs');
 const infoPanel = document.querySelector('.info-panel');
+const renderSwitcher = document.getElementById('render-switcher');
+const threeStage = document.getElementById('three-stage');
 const SPEED_MAP = [1, 2, 5, 10];
 
 if (viewSwitcher) {
@@ -242,6 +245,25 @@ if (viewSwitcher) {
             state.view = btn.dataset.view;
             applyViewState();
             if (state.lastData && window.CanteenApp.refreshCampusView) {
+                window.CanteenApp.refreshCampusView(state.lastData);
+            }
+        });
+    });
+}
+
+if (renderSwitcher) {
+    renderSwitcher.querySelectorAll('button[data-render]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            state.renderMode = btn.dataset.render || '2d';
+            applyViewState();
+            if (
+                state.renderMode === '3d' &&
+                state.lastData &&
+                window.CanteenApp3D
+            ) {
+                window.CanteenApp3D.init(threeStage);
+                window.CanteenApp3D.render(state.lastData, state);
+            } else if (state.lastData && window.CanteenApp.refreshCampusView) {
                 window.CanteenApp.refreshCampusView(state.lastData);
             }
         });
@@ -306,6 +328,7 @@ function resetSimulationState() {
     state.activeCanteenId = null;
     state.activeFloorId = null;
     state.canteenOrder = [];
+    state.renderMode = '2d';
     state.studentPrev = {};
     playPauseBtn.textContent = '暂停';
     document.getElementById('current-time').textContent = '00:00';
@@ -357,7 +380,10 @@ async function dispatchStep() {
         if (!state.activeCanteenId) {
             state.activeCanteenId = state.canteenOrder[0] || null;
         }
-        if (window.CanteenApp.refreshCampusView) {
+        if (state.renderMode === '3d' && window.CanteenApp3D) {
+            window.CanteenApp3D.init(threeStage);
+            window.CanteenApp3D.render(data, state);
+        } else if (window.CanteenApp.refreshCampusView) {
             window.CanteenApp.refreshCampusView(data);
         } else {
             updateInfoPanel(campusInfoPanelData(data));
@@ -379,16 +405,24 @@ function currentSimulationBase() {
 function applyViewState() {
     const isCampusMode = state.mode === 'campus';
     const isCampusView = isCampusMode && state.view === 'campus';
+    const is3D = isCampusMode && state.renderMode === '3d';
     if (viewSwitcher) viewSwitcher.hidden = !isCampusMode;
+    if (renderSwitcher) renderSwitcher.hidden = !isCampusMode;
     if (campusOverviewPanel) campusOverviewPanel.hidden = !isCampusView;
-    if (canteenSwitcher) canteenSwitcher.hidden = !isCampusMode || isCampusView;
-    if (campusMapContainer) campusMapContainer.hidden = !isCampusView;
-    if (canvas) canvas.hidden = isCampusView;
-    if (floorTabs) floorTabs.hidden = !isCampusMode || isCampusView;
-    if (infoPanel) infoPanel.hidden = isCampusView;
+    if (canteenSwitcher) canteenSwitcher.hidden = !isCampusMode || isCampusView || is3D;
+    if (campusMapContainer) campusMapContainer.hidden = !isCampusView || is3D;
+    if (threeStage) threeStage.hidden = !is3D;
+    if (canvas) canvas.hidden = isCampusView || is3D;
+    if (floorTabs) floorTabs.hidden = !isCampusMode || isCampusView || is3D;
+    if (infoPanel) infoPanel.hidden = isCampusView || is3D;
     if (viewSwitcher) {
         viewSwitcher.querySelectorAll('button[data-view]').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.view === state.view);
+        });
+    }
+    if (renderSwitcher) {
+        renderSwitcher.querySelectorAll('button[data-render]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.render === state.renderMode);
         });
     }
 }

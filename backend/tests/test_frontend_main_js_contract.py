@@ -29,6 +29,7 @@ def test_main_js_state_has_campus_control_fields():
         'visibleCanteens: []',
         'pendingCanteens: []',
         'campusPresetScale: null',
+        "renderMode: '2d'",
     ):
         assert snippet in MAIN_JS
 

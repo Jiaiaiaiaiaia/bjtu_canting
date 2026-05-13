@@ -367,6 +367,7 @@ button:disabled {
 }
 
 .view-switcher,
+.render-switcher,
 .canteen-switcher {
     display: inline-flex;
     align-items: center;
@@ -377,14 +378,16 @@ button:disabled {
     border-radius: var(--radius-md);
 }
 
-.view-switcher button {
+.view-switcher button,
+.render-switcher button {
     padding: 6px 12px;
     color: var(--c-text-secondary);
     background: transparent;
     border: 1px solid transparent;
 }
 
-.view-switcher button.active {
+.view-switcher button.active,
+.render-switcher button.active {
     color: var(--c-primary);
     background: var(--c-primary-light);
     border-color: var(--c-primary-border);
@@ -500,6 +503,30 @@ button:disabled {
     background: #f8fafc;
     border: 1px dashed var(--c-border-dark);
     border-radius: var(--radius-sm);
+}
+
+.three-stage {
+    width: 100%;
+    min-height: 560px;
+    aspect-ratio: 16 / 9;
+    background: #07111d;
+    border: 1px solid var(--c-border-dark);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.three-stage canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.three-fallback {
+    display: grid;
+    min-height: 560px;
+    place-items: center;
+    color: #d1d5db;
+    font-size: 13px;
 }
 
 .floor-tabs {
@@ -733,7 +760,7 @@ button:disabled {
     .charts-container { grid-template-columns: 1fr; }
     .config-card { margin: 16px; padding: 24px; }
     .simulation-toolbar { align-items: stretch; flex-direction: column; }
-    .view-switcher, .canteen-switcher { justify-content: space-between; }
+    .view-switcher, .render-switcher, .canteen-switcher { justify-content: space-between; }
 }
 
 @media (max-width: 640px) {

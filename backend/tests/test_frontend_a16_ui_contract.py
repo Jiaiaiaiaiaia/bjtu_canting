@@ -34,6 +34,15 @@ def test_a16_html_adds_mode_forms_and_campus_controls():
         'id="campus-avg-waiting"',
         'id="canteen-switcher" hidden',
         'id="active-canteen-select"',
+        'id="render-switcher"',
+        'data-render="2d"',
+        'data-render="3d"',
+        'id="three-stage"',
+        'type="importmap"',
+        '"three"',
+        'OrbitControls.js',
+        'type="module"',
+        'scene3d.js',
     ):
         assert snippet in INDEX_HTML
 
@@ -68,6 +77,9 @@ def test_a16_main_js_binds_mode_and_view_controls():
         'infoPanel.hidden = isCampusView',
         "document.getElementById('simulation-mode-single')",
         "querySelectorAll('button[data-view]')",
+        "querySelectorAll('button[data-render]')",
+        'window.CanteenApp3D.init',
+        'window.CanteenApp3D.render(data, state)',
     ):
         assert snippet in MAIN_JS
 
@@ -131,6 +143,8 @@ def test_a16_css_styles_new_campus_ui_shell():
         '#campus-map-svg',
         '.floor-tabs',
         '.canteen-marker',
+        '.render-switcher',
+        '.three-stage',
     ):
         assert snippet in STYLE_CSS
 

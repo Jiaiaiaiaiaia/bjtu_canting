@@ -1,0 +1,17 @@
+{
+  "consoleErrorCount": 0,
+  "consoleErrors": [],
+  "three": {
+    "readable": true,
+    "nonblank": 50869,
+    "width": 1204,
+    "height": 676,
+    "renderMode": "3d",
+    "hidden": false
+  },
+  "screenshotBytes": 135273,
+  "back2d": {
+    "renderMode": "2d",
+    "canvasHidden": false
+  }
+}

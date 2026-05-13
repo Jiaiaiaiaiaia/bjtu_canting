@@ -104,6 +104,10 @@
                         <label for="active-canteen-select">当前查看食堂</label>
                         <select id="active-canteen-select"></select>
                     </div>
+                    <div id="render-switcher" hidden class="render-switcher">
+                        <button type="button" data-render="2d" class="active">2D</button>
+                        <button type="button" data-render="3d">3D</button>
+                    </div>
                 </div>
 
                 <div id="campus-overview-panel" hidden class="campus-overview-panel">
@@ -132,6 +136,7 @@
                     <div class="campus-map-container" id="campus-map-container" hidden>
                         <svg id="campus-map-svg"></svg>
                     </div>
+                    <div id="three-stage" class="three-stage" hidden></div>
                     <div class="floor-tabs" id="floor-tabs"></div>
                     <canvas id="canteen-canvas" width="900" height="640"></canvas>
                 </div>
@@ -233,9 +238,18 @@
     </main>
 </div>
 
+<script type="importmap">
+{
+  "imports": {
+    "three": "{{ url_for('static', filename='js/three/vendor/three.module.js') }}",
+    "three/addons/controls/OrbitControls.js": "{{ url_for('static', filename='js/three/vendor/OrbitControls.js') }}"
+  }
+}
+</script>
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 <script src="{{ url_for('static', filename='js/campus.js') }}"></script>
 <script src="{{ url_for('static', filename='js/campus_map.js') }}"></script>
 <script src="{{ url_for('static', filename='js/floor_tabs.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/three/scene3d.js') }}"></script>
 </body>
 </html>
