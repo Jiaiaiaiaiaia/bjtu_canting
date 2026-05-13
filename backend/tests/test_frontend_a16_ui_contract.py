@@ -10,6 +10,7 @@ STYLE_CSS = (REPO_ROOT / 'frontend' / 'static' / 'css' / 'style.css').read_text(
 
 def test_a16_html_adds_mode_forms_and_campus_controls():
     for snippet in (
+        'rel="icon" href="data:,"',
         'name="simulation_mode"',
         'id="simulation-mode-single"',
         'id="simulation-mode-campus"',

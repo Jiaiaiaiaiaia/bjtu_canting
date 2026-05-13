@@ -9,6 +9,20 @@
   - 校园模式：`/api/campus/config -> /api/campus/start -> /api/campus/step -> /api/campus/finish -> /api/campus/statistics -> /api/campus/history*`
   - 前端联调：使用真实 `campus/step` 返回值驱动 `campus.js / campus_map.js / floor_tabs.js`
 
+## 2026-05-13 浏览器复验
+
+- 本轮已补齐真实浏览器验证层，详见 `docs/phase3/browser_e2e_check.md`。
+- Headless Chrome / CDP 结果：
+  - console error 数：`0`
+  - 单食堂：`total_arrived=72`，`total_served=72`
+  - 校园预设：`total_arrived=21`，`total_served=21`
+  - 校园地图：3 个食堂 marker，其中学活为 pending marker；runtime marker 为明湖/学一与学四。
+- 截图证据：
+  - `docs/phase3/screenshots/single-flow-analysis.png`
+  - `docs/phase3/screenshots/campus-map.png`
+  - `docs/phase3/screenshots/campus-canteen-floor.png`
+  - `docs/phase3/screenshots/campus-analysis.png`
+
 ## 环境与限制
 
 - 本地 Flask：`http://127.0.0.1:5001`
@@ -16,8 +30,7 @@
 - 前端契约测试集合：
   `PYTHONPATH=backend ./.venv/bin/python -m pytest backend/tests/test_frontend_main_js_contract.py backend/tests/test_frontend_campus_js_contract.py backend/tests/test_frontend_campus_map_js_contract.py backend/tests/test_frontend_floor_tabs_js_contract.py backend/tests/test_frontend_a16_ui_contract.py -q`
 - 限制：
-  - 当前线程未授予 Computer Use 浏览器权限，无法直接做真实浏览器点击与 console 抓取。
-  - 本轮以“本机 API 串行联调 + 真实 snapshot 驱动前端脚本 harness”替代最后一层人工点测。
+  - 2026-05-12 记录中的“未做真实浏览器点击/console 观察”已在 2026-05-13 通过 Headless Chrome / CDP 补齐。
 
 ## 联调结果
 
