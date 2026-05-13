@@ -124,6 +124,78 @@
         };
     }
 
+    function withoutPriority(item) {
+        const { priority, ...publicItem } = item;
+        return publicItem;
+    }
+
+    function buildInterventions(stats) {
+        stats = stats || {};
+        const totalArrived = toNumber(stats.total_arrived);
+        const peakQueue = toNumber(stats.peak_queue_length);
+        const avgWait = toNumber(stats.avg_waiting_time);
+        const seatUtilization = toNumber(stats.seat_utilization);
+        const switchRate = toNumber(stats.switch_rate, -1);
+
+        if (totalArrived <= 0) {
+            return [{
+                title: '先完成一次仿真',
+                tag: '待数据',
+                impact: '完成仿真后展示可比较的调参方向。',
+                tone: 'neutral',
+            }];
+        }
+
+        const waitingPressure = avgWait >= 120 || peakQueue >= 30 ? 2 : (avgWait >= 45 || peakQueue >= 10 ? 1 : 0);
+        const seatPressure = seatUtilization >= 85 ? 2 : (seatUtilization >= 70 ? 1 : 0);
+        const interventions = [];
+
+        if (waitingPressure > 0) {
+            interventions.push({
+                title: '增开服务窗口',
+                tag: waitingPressure >= 2 ? '优先干预' : '备选干预',
+                impact: `平均等待 ${formatSeconds(avgWait)}，峰值排队 ${peakQueue} 人；优先通过增开窗口或缩短打饭时间降低排队压力。`,
+                tone: waitingPressure >= 2 ? 'high' : 'medium',
+                priority: waitingPressure * 10 + (waitingPressure >= seatPressure ? 2 : 0),
+            });
+        }
+
+        if (seatPressure > 0) {
+            interventions.push({
+                title: '增加座位供给',
+                tag: seatPressure >= 2 ? '优先干预' : '备选干预',
+                impact: `座位利用率 ${formatPercent(seatUtilization)}；优先通过增加座位或压缩平均就餐时间缓解周转压力。`,
+                tone: seatPressure >= 2 ? 'high' : 'medium',
+                priority: seatPressure * 10 + (seatPressure > waitingPressure ? 2 : 0),
+            });
+        }
+
+        if (switchRate >= 0.2) {
+            interventions.push({
+                title: '优化跨食堂分流',
+                tag: '校园路由',
+                impact: `改派率 ${formatPercent(switchRate * 100)}；可调低高峰入口权重或强化实时队长信息，减少无效迁移。`,
+                tone: 'medium',
+                priority: 8,
+            });
+        }
+
+        if (!interventions.length) {
+            interventions.push({
+                title: '保持当前配置',
+                tag: '低拥堵',
+                impact: `平均等待 ${formatSeconds(avgWait)}，峰值排队 ${peakQueue} 人，座位利用率 ${formatPercent(seatUtilization)}；当前配置可作为对照组。`,
+                tone: 'low',
+                priority: 1,
+            });
+        }
+
+        return interventions
+            .sort((a, b) => b.priority - a.priority)
+            .slice(0, 3)
+            .map(withoutPriority);
+    }
+
     function setText(doc, id, value) {
         const element = doc.getElementById(id);
         if (element) element.textContent = value;
@@ -143,10 +215,43 @@
         setText(doc, 'diagnosis-summary', diagnosis.summary);
     }
 
+    function addInterventionCard(doc, list, item) {
+        const card = doc.createElement('article');
+        card.className = `intervention-card ${item.tone || 'neutral'}`;
+
+        const tag = doc.createElement('span');
+        tag.className = 'intervention-tag';
+        tag.textContent = item.tag;
+
+        const title = doc.createElement('strong');
+        title.textContent = item.title;
+
+        const impact = doc.createElement('p');
+        impact.className = 'intervention-impact';
+        impact.textContent = item.impact;
+
+        card.append(tag, title, impact);
+        list.appendChild(card);
+    }
+
+    function renderInterventions(stats, deps) {
+        const doc = deps.document;
+        const list = doc.getElementById('intervention-list');
+        if (!list) return;
+
+        const interventions = buildInterventions(stats || {});
+        list.innerHTML = '';
+        interventions.forEach(item => addInterventionCard(doc, list, item));
+
+        const primary = interventions[0];
+        setText(doc, 'intervention-summary', primary ? `建议优先：${primary.title}` : '暂无建议');
+    }
+
     function renderCharts(stats, deps) {
         const { document: doc, echarts, state } = deps;
         disposeCharts(deps);
         renderDiagnosis(stats, deps);
+        renderInterventions(stats, deps);
         const windowSeries = normalizeWindowServed(stats.window_served);
 
         state.charts.window = echarts.init(doc.getElementById('window-chart'));
@@ -218,5 +323,7 @@
         normalizeWindowServed,
         buildDiagnosis,
         renderDiagnosis,
+        buildInterventions,
+        renderInterventions,
     };
 })();

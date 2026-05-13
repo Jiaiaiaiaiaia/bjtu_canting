@@ -724,6 +724,85 @@ button:disabled {
     line-height: 1.6;
 }
 
+.intervention-panel {
+    margin: 0 0 20px;
+    padding: 16px 18px;
+    background: var(--c-card);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-md);
+}
+
+.intervention-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.intervention-header h3 {
+    margin: 0;
+    color: var(--c-text);
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.intervention-header span {
+    color: var(--c-text-hint);
+    font-size: 12px;
+    text-align: right;
+}
+
+.intervention-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.intervention-card {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    background: var(--c-bg);
+}
+
+.intervention-card.high {
+    border-color: var(--c-primary-border);
+    background: var(--c-primary-light);
+}
+
+.intervention-card.medium {
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+
+.intervention-card.low {
+    border-color: #bbf7d0;
+    background: #ecfdf5;
+}
+
+.intervention-tag {
+    display: inline-flex;
+    margin-bottom: 8px;
+    color: var(--c-text-hint);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.intervention-card strong {
+    display: block;
+    color: var(--c-text);
+    font-size: 15px;
+    line-height: 1.4;
+}
+
+.intervention-impact {
+    margin: 8px 0 0;
+    color: var(--c-text-secondary);
+    line-height: 1.55;
+}
+
 .charts-container {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -846,6 +925,7 @@ button:disabled {
     .campus-overview-panel { grid-template-columns: repeat(3, 1fr); }
     .stats-overview { grid-template-columns: repeat(3, 1fr); }
     .diagnosis-grid { grid-template-columns: 1fr; }
+    .intervention-list { grid-template-columns: 1fr; }
     .charts-container { grid-template-columns: 1fr; }
     .config-card { margin: 16px; padding: 24px; }
     .simulation-toolbar { align-items: stretch; flex-direction: column; }

@@ -35,6 +35,26 @@ def test_analysis_page_styles_diagnosis_panel_as_first_class_section():
         assert snippet in STYLE_CSS
 
 
+def test_analysis_page_has_intervention_recommendation_panel():
+    for snippet in (
+        'id="intervention-panel"',
+        'id="intervention-list"',
+        'id="intervention-summary"',
+    ):
+        assert snippet in INDEX_HTML
+
+
+def test_analysis_page_styles_intervention_recommendations():
+    for snippet in (
+        '.intervention-panel',
+        '.intervention-list',
+        '.intervention-card',
+        '.intervention-tag',
+        '.intervention-impact',
+    ):
+        assert snippet in STYLE_CSS
+
+
 def test_analysis_charts_builds_diagnosis_from_existing_statistics():
     for snippet in (
         'function buildDiagnosis(stats)',
@@ -50,12 +70,43 @@ def test_analysis_charts_builds_diagnosis_from_existing_statistics():
         assert snippet in ANALYSIS_CHARTS_JS
 
 
+def test_analysis_charts_builds_interventions_from_existing_statistics():
+    for snippet in (
+        'function buildInterventions(stats)',
+        'function renderInterventions(stats, deps)',
+        'stats.peak_queue_length',
+        'stats.avg_waiting_time',
+        'stats.seat_utilization',
+        'renderInterventions(stats, deps);',
+        'buildInterventions,',
+        'renderInterventions,',
+    ):
+        assert snippet in ANALYSIS_CHARTS_JS
+
+
 def build_diagnosis(stats):
     script = f"""
 global.window = {{ CanteenApp: {{}} }};
 {ANALYSIS_CHARTS_JS}
 const diagnosis = window.CanteenApp.AnalysisCharts.buildDiagnosis({json.dumps(stats)});
 console.log(JSON.stringify(diagnosis));
+"""
+    completed = subprocess.run(
+        ['node', '-e', script],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(completed.stdout)
+
+
+def build_interventions(stats):
+    script = f"""
+global.window = {{ CanteenApp: {{}} }};
+{ANALYSIS_CHARTS_JS}
+const interventions = window.CanteenApp.AnalysisCharts.buildInterventions({json.dumps(stats)});
+console.log(JSON.stringify(interventions));
 """
     completed = subprocess.run(
         ['node', '-e', script],
@@ -97,3 +148,37 @@ def test_diagnosis_rules_classify_queue_and_seat_pressure():
     assert seat_pressure['level'] == '高拥堵'
     assert seat_pressure['bottleneck'] == '座位周转压力'
     assert '跨食堂改派率 25.0%' in seat_pressure['summary']
+
+
+def test_intervention_rules_recommend_action_for_dominant_pressure():
+    idle = build_interventions({})
+    assert idle[0]['title'] == '先完成一次仿真'
+
+    queue_pressure = build_interventions({
+        'total_arrived': 100,
+        'total_served': 100,
+        'peak_queue_length': 35,
+        'avg_waiting_time': 140,
+        'seat_utilization': 50,
+    })
+    assert queue_pressure[0]['title'] == '增开服务窗口'
+    assert '平均等待' in queue_pressure[0]['impact']
+
+    seat_pressure = build_interventions({
+        'total_arrived': 80,
+        'total_served': 80,
+        'peak_queue_length': 2,
+        'avg_waiting_time': 15,
+        'seat_utilization': 91,
+    })
+    assert seat_pressure[0]['title'] == '增加座位供给'
+    assert '座位利用率' in seat_pressure[0]['impact']
+
+    low_pressure = build_interventions({
+        'total_arrived': 30,
+        'total_served': 30,
+        'peak_queue_length': 1,
+        'avg_waiting_time': 8,
+        'seat_utilization': 34,
+    })
+    assert low_pressure[0]['title'] == '保持当前配置'
