@@ -31,6 +31,9 @@ database/*.sqlite-journal
 # Brainstorming scratchpad
 .superpowers/
 
+# External generated deliverables
+outputs/
+
 # Archives
 *.rar
 *.zip
