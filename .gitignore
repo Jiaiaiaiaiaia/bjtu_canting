@@ -30,6 +30,7 @@ database/*.sqlite-journal
 
 # Brainstorming scratchpad
 .superpowers/
+.worktrees
 
 # External generated deliverables
 outputs/
