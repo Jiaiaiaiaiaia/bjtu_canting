@@ -102,7 +102,16 @@ def load_single_canteen_preset() -> dict:
     cfg = copy.deepcopy(base["config"])
     cfg["canteens"] = [copy.deepcopy(minghu)]
     cfg["router"]["max_switches_per_student"] = 0
-    # spec §3.5/§5.1：带午高峰爬升 + 下课脉冲，驱动 3D 演示 λ(t) 叙事。
+    # demo 规模重标定：default 继承的 simulation_seconds=300 配明湖学一
+    # avg_eat_time=15min(900s) 会导致零学生完成，复现/演示与 C1 复现测试均空转。
+    # 实测（seed=123）：N=2400+sim=3600 时排队峰值 ≈87（远超 observed_peak_queue=25）、
+    # 座位满载，served=2128 名学生在窗口内完成；N≈1800 到达率低于窗口/座位吞吐、
+    # 队列恒为 0、无拥堵叙事。注意：ArrivalGenerator 当前用恒定 λ（未接 arrival_schedule，
+    # 属 D1 范围），故队列在窗口内单调上升、回落发生在到达截止后的 drain 段。
+    cfg["campus"]["simulation_seconds"] = 3600
+    cfg["campus"]["total_students"] = 2400
+    # spec §3.5/§5.1：arrival_schedule 仅 trace 路径消费；live 路径 λ(t) 接线见 D1。
+    # ramp/pulse 基于下方 sim_s 动态计算，重标定后自动跟随。
     sim_s = float(cfg["campus"]["simulation_seconds"])
     cfg["campus"]["arrival_schedule"] = {
         "baseline": 0.1,

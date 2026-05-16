@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request
 import api.routes as single_routes
 from simulation.coordinator import CampusCoordinator
 from simulation.presets.loader import load_default_campus_preset
+from simulation.random_streams import build_random_streams
 
 
 campus_bp = Blueprint('campus_api', __name__, url_prefix='/api/campus')
@@ -359,8 +360,11 @@ def submit_campus_config():
         config_id = cur.lastrowid
         conn.commit()
 
-    rng = random.Random(payload['router'].get('rng_seed', 42))
-    coordinator = CampusCoordinator(simpy.Environment(), payload, rng)
+    rng_seed = payload['router'].get('rng_seed', 42)
+    streams = build_random_streams(rng_seed)
+    coordinator = CampusCoordinator(
+        simpy.Environment(), payload, random.Random(rng_seed),
+        random_streams=streams)
     _session()['mode'] = 'campus'
     _session()['engine'] = None
     _session()['coordinator'] = coordinator
