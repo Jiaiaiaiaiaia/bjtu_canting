@@ -3,7 +3,7 @@
 **项目**：北京交通大学就餐仿真系统（Canteen）
 **日期**：2026-05-16
 **分支**：codex/canteen-demo-polish
-**状态**：设计已确认（brainstorming 五节逐节锁定），待 spec 评审 → 实施计划拆分
+**状态**：设计已确认（brainstorming 五节逐节锁定），spec 评审已通过（spec-document-reviewer 第 2 轮 Approved），待实施计划拆分
 **目标**：把仿真页升级为「单食堂多层 3D 数字孪生」主体验，支持运行中开/关窗口真改后端排队，并加入时变到达高峰，面向**比赛/作品展示**（技术含量 + 视觉冲击，兼顾可分析）。
 **审查依据**：`reviews/2026-05-16_code-review.md`
 
