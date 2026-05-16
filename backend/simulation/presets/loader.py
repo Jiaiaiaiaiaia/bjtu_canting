@@ -91,3 +91,29 @@ def load_default_campus_preset() -> dict:
         "source_scale": source_scale,
         "demo_runtime": True,
     }
+
+
+def load_single_canteen_preset() -> dict:
+    """N=1 单食堂（明湖学一 3 层）；envelope 与 load_default_campus_preset 完全一致，
+    前端 applyCampusPresetMetadata 零分叉。/presets/default 不动。"""
+    base = load_default_campus_preset()
+    minghu = next(c for c in base["config"]["canteens"]
+                  if c["id"] == "minghu_xueyi")
+    cfg = copy.deepcopy(base["config"])
+    cfg["canteens"] = [copy.deepcopy(minghu)]
+    cfg["router"]["max_switches_per_student"] = 0
+    # spec §3.5/§5.1：带午高峰爬升 + 下课脉冲，驱动 3D 演示 λ(t) 叙事。
+    sim_s = float(cfg["campus"]["simulation_seconds"])
+    cfg["campus"]["arrival_schedule"] = {
+        "baseline": 0.1,
+        "ramp": [sim_s * 0.15, sim_s * 0.75, 1.0],
+        "pulses": [[sim_s * 0.5, 0.6, sim_s * 0.08]],
+    }
+    visible = [c for c in base["visible_canteens"] if c["id"] == "minghu_xueyi"]
+    return {
+        "config": cfg,
+        "visible_canteens": visible,
+        "pending_canteens": [],
+        "source_scale": base["source_scale"],
+        "demo_runtime": True,
+    }
