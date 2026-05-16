@@ -121,3 +121,17 @@ def test_same_seed_service_or_eat_change_keeps_same_arrivals():
     changed = run_to_end(adjusted, seed=20260513)
 
     assert baseline["total_arrived"] == changed["total_arrived"]
+
+
+def test_engine_build_state_flat_shape_unchanged():
+    from simulation import SimulationEngine
+    cfg = {"window_count": 3, "seat_count": 20, "avg_serve_time": 5,
+           "avg_eat_time": 1, "arrival_rate": 10, "total_time": 1}
+    e = SimulationEngine(cfg, config_id=1, rng_seed=7)
+    e.start()
+    s = e.step()
+    assert set(s) >= {"is_ended","event_type","current_time","total_time",
+        "total_arrived","total_served","total_in_queue","total_eating",
+        "empty_seats","avg_waiting_time","waiting_queue_length",
+        "windows","seats","students"}
+    assert "floors" not in s  # Phase 2 flat：不得新增 floors[]

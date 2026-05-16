@@ -75,53 +75,18 @@ class SimulationEngine:
 
     # ------------------------------------------------------------------ 配置转换
     def _to_single_canteen_config(self, config):
-        """把 Phase 2 六字段配置转成校园模式的单食堂配置。"""
-        total_minutes = float(config["total_time"])
-        arrival_rate = float(config["arrival_rate"])
-        # ArrivalGenerator 使用 N * alpha * coverage / T；这里取 alpha=coverage=1。
-        total_students = max(arrival_rate * total_minutes, 1.0)
-        return {
-            "canteens": [{
-                "id": self.SINGLE_CANTEEN_ID,
-                "display_name": "单食堂",
-                "campus_position": {"x": 0, "y": 0},
-                "avg_serve_time_seconds": float(config["avg_serve_time"]),
-                "avg_eat_time_minutes": float(config["avg_eat_time"]),
-                "arrival_weight": 1.0,
-                "typical_wait_seconds": 0.0,
-                "floors": [{
-                    "floor_id": 1,
-                    "windows": {
-                        "physical_count": int(config["window_count"]),
-                        "active_count": int(config["window_count"]),
-                    },
-                    "seats": {"count": int(config["seat_count"])},
-                }],
-            }],
-            "campus": {
-                "total_students": total_students,
-                "lunch_alpha": 1.0,
-                "coverage": 1.0,
-                "peak_window_minutes": total_minutes,
-                "peak_beta": 1.0,
-                "simulation_seconds": self.total_time,
-                "entrance_position": {"x": 0, "y": 0},
-                "walking_speed_mps": 1.4,
-                "walking_time_seconds": {},
-                "entrance_walk_seconds": {self.SINGLE_CANTEEN_ID: 0.0},
-                "_planned_students": self._planned_students,
-                "_student_traces": self._student_traces,
-            },
-            "router": {
-                "information_mode": "local_estimate",
-                "patience_mean_seconds": 180.0,
-                "patience_std_seconds": 60.0,
-                "patience_min_seconds": 30.0,
-                "switch_improvement_ratio": 1.3,
-                "max_switches_per_student": 0,
-                "rng_seed": 42,
-            },
-        }
+        """把 Phase 2 六字段配置转成校园模式的单食堂配置。
+
+        结构构造统一走 ``汇流`` builder；门面专属的运行期键
+        （仿真总秒数、计划学生列表、学生轨迹）在本方法内重新注入
+        ``cfg["campus"]``，不污染 ``__init__``。
+        """
+        from .canteen_config import build_single_canteen_config
+        cfg = build_single_canteen_config(config)
+        cfg["campus"]["simulation_seconds"] = self.total_time
+        cfg["campus"]["_planned_students"] = self._planned_students
+        cfg["campus"]["_student_traces"] = self._student_traces
+        return cfg
 
     # ------------------------------------------------------------------ 启动与推进
     def start(self):
