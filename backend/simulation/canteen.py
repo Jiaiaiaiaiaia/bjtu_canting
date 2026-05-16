@@ -16,6 +16,7 @@ class Window:
     waiting_students: list = field(default_factory=list)
     current_serving: Optional["Student"] = None
     total_served: int = 0
+    is_open: bool = True                              # B1：物理窗口可被关停，关停后不再分流新学生
 
     @property
     def queue_length(self) -> int:
@@ -120,12 +121,18 @@ class Canteen:
             self.active_window_count += wdef.get("active_count", 0)
             floor_serve_time = wdef.get("avg_serve_time_seconds", default_serve_time)
 
-            for _ in range(wdef.get("active_count", 0)):
+            # B1：实例化全部 physical_count 窗口；前 active_count 个初始开放，
+            # 其余初始关停（is_open=False）。关停窗口不参与 shortest_window 分流，
+            # 但 SimPy 资源仍在，已排队学生自然 drain。
+            phys = wdef.get("physical_count", wdef.get("active_count", 0))
+            act = wdef.get("active_count", 0)
+            for k in range(phys):
                 self.windows.append(Window(
                     id=next_window_id,
                     floor_id=fid,
                     canteen_avg_serve_time=floor_serve_time,
                     resource=simpy.Resource(env, capacity=1),
+                    is_open=(k < act),
                 ))
                 next_window_id += 1
 
@@ -164,8 +171,21 @@ class Canteen:
                 f"preset 配置错误或所有楼层 active_count 都为 0"
             )
 
+    @property
+    def open_window_count(self) -> int:
+        return sum(1 for w in self.windows if w.is_open)
+
+    @property
+    def open_window_capacity_score(self) -> float:
+        return sum(1.0 / w.canteen_avg_serve_time
+                   for w in self.windows if w.is_open)
+
     def shortest_window(self) -> Window:
-        return min(self.windows, key=lambda w: w.queue_load)
+        # B1：只在开放窗口中选；关停窗口不接收新学生（已排队的自然 drain）。
+        open_windows = [w for w in self.windows if w.is_open]
+        if not open_windows:
+            raise RuntimeError(f"Canteen {self.id!r}: no open window")
+        return min(open_windows, key=lambda w: w.queue_load)
 
     def join_seat_queue(self, student: "Student"):
         self.seat_waiting_students.append(student)
