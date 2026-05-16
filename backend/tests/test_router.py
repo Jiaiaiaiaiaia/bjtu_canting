@@ -273,3 +273,12 @@ def test_router_live_congestion_mode_toggle():
     alt = router_live.try_switch(s, canteens, exclude_id="minghu_xueyi")
     assert alt is not None
     assert alt.id == "xuesi"
+
+
+# 9. pick_initial 使用 open_window_capacity_score（排除关闭窗口）
+def test_pick_initial_capacity_uses_open_windows():
+    # N=1 单元素 choices 必返回该食堂；此处仅断言权重计算不再用 active_window_count
+    import simulation.router as R
+    src = open(R.__file__, encoding="utf-8").read()
+    assert "open_window_capacity_score" in src
+    assert "active_window_count / " not in src

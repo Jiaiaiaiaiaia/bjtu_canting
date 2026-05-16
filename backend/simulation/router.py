@@ -54,7 +54,7 @@ class StudentRouter:
         weights = []
         for c in canteen_list:
             walk_min = max(1.0, self.campus.walking_time_from_entrance(c.id) / 60.0)
-            capacity_score = c.active_window_count / c.avg_serve_time
+            capacity_score = c.open_window_capacity_score
             score = c.arrival_weight * capacity_score / walk_min
             weights.append(score)
         return self.rng.choices(canteen_list, weights=weights, k=1)[0]
