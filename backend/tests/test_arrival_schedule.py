@@ -34,7 +34,6 @@ def test_constant_schedule_arrivals_match_legacy_expovariate():
           for t in build_single_canteen_traces(cfg, build_random_streams(99))]
     assert t1 == t2 and len(t1) > 0   # 确定性
     # 与历史基线对齐：未配 λ(t) 时必须仍是恒定速率 expovariate（旁路）
-    import random
     rate = cfg["arrival_rate"] / 60.0
     streams = build_random_streams(99)
     expect, acc = [], 0.0
