@@ -45,21 +45,23 @@ const FRONT_WINDOW_MENU_BOARD_HEIGHT = 8.8;
 const FRONT_WINDOW_LABEL_X_OFFSET = 0;
 const FRONT_WINDOW_LABEL_Y_OFFSET = 20.4;
 const FRONT_WINDOW_LABEL_Z_OFFSET = -13.2;
-const FLOOR_SLAB_COLORS = [0xf0f4ee, 0xe3ece8];
-// Style C: 三色楼层 per-floor accent (1F gold, 2F blue, 3F teal)
-const FLOOR_ACCENT_COLORS = { 1: 0xdcb450, 2: 0x60a0dc, 3: 0x5eead4 };
+// Style B: 实体建筑·写实风格 — 暖象牙楼板 + 水泥墙体
+const FLOOR_SLAB_COLORS = [0xe8e2d8, 0xddd7cd];
 const FLOOR_TILE_COLOR = 0xf4f7f1;
 const FLOOR_SLAB_OPACITY = 0.055;
-const OVERVIEW_FLOOR_SLAB_OPACITY = 0.42;
+const OVERVIEW_FLOOR_SLAB_OPACITY = 0.90;
 const FOCUS_FLOOR_SLAB_OPACITY = 1.0;
 const FLOOR_SLAB_RENDER_ORDER = -4;
 const FLOOR_OUTLINE_OPACITY = 0.72;
 const FLOOR_TILE_OUTLINE_OPACITY = 0.42;
 const FLOOR_EDGE_BAND_HEIGHT = 4.8;
 const FLOOR_EDGE_BAND_THICKNESS = 2.4;
-const FLOOR_EDGE_BAND_OPACITY = 0.88;
-const FLOOR_BACK_WALL_OPACITY = 0.22;
-const FLOOR_SIDE_WALL_OPACITY = 0.12;
+const FLOOR_EDGE_BAND_OPACITY = 0.95;
+const FLOOR_BACK_WALL_OPACITY = 0.82;
+const FLOOR_SIDE_WALL_OPACITY = 0.72;
+// Style B 墙体 / 边框色（暖水泥灰）
+const FLOOR_WALL_COLOR = 0x8a7a6a;
+const FLOOR_EDGE_COLOR = 0x3a2e28;
 const OPEN_BUILDING_FRAME_OPACITY = 0.76;
 const OPEN_BUILDING_DEPTH_PAD = 8;
 const INTERFLOOR_SHADOW_OPACITY = 0.34;
@@ -2145,15 +2147,14 @@ export class CanteenScene {
             const footprint = this._floorFootprint(floor);
             const fz = footprint.centerZ;
 
-            // ---- 楼板 slab（Style C: 每层独立强调色 + 热力模式）----
-            const accentColor = FLOOR_ACCENT_COLORS[floor.floor_id]
-                ?? FLOOR_SLAB_COLORS[floor.index % FLOOR_SLAB_COLORS.length];
+            // ---- 楼板 slab（Style B: 暖象牙色 + 热力模式）----
+            const slabBaseColor = FLOOR_SLAB_COLORS[floor.index % FLOOR_SLAB_COLORS.length];
             // heatColor 用于热力模式时楼板着色（利用最大队列饱和度）
             const maxSat = floor.windows.length > 0
                 ? Math.min(1, Math.max(...floor.windows.map(w => (w.queue_length || 0) / 12)))
                 : 0;
             const hc = heatColor(THREE, maxSat);
-            const slabColor = this.heatMode ? hc.getHex() : accentColor;
+            const slabColor = this.heatMode ? hc.getHex() : slabBaseColor;
             const slab = this._floorShapeMesh(
                 fg,
                 'furnitureDerivedFootprint floor slab',
@@ -2167,7 +2168,7 @@ export class CanteenScene {
                 'furnitureDerivedFootprint floor outline',
                 footprint,
                 baseY + 3.2,
-                accentColor,
+                FLOOR_EDGE_COLOR,
                 FLOOR_OUTLINE_OPACITY,
                 { floorId: floor.floor_id, kind: 'floorOutline' }
             );
@@ -2175,32 +2176,31 @@ export class CanteenScene {
                 fg,
                 footprint,
                 baseY,
-                this.heatMode ? hc.clone().lerp(new THREE.Color(0x415156), 0.72).getHex() : accentColor,
+                this.heatMode ? hc.clone().lerp(new THREE.Color(0x415156), 0.72).getHex() : FLOOR_EDGE_COLOR,
                 { floorId: floor.floor_id, kind: 'floorEdge' }
             );
             void slab;
 
-            // ---- Style C: 正面永久开放（剖面展示，内部全可见）----
-            // 无正面玻璃幕墙，让三色楼板直接面向相机
+            // ---- Style B: 正面开放（建筑剖面模型），后墙+侧墙实体水泥色 ----
 
-            // 后墙 + 侧墙：楼层强调色半透明
+            // 后墙 + 侧墙：实体建筑灰
             const backWall = new THREE.Mesh(
                 new THREE.BoxGeometry(footprint.width, 26, 2),
-                this._mat(accentColor, FLOOR_BACK_WALL_OPACITY)
+                this._mat(FLOOR_WALL_COLOR, FLOOR_BACK_WALL_OPACITY)
             );
             backWall.position.set(footprint.centerX, baseY + 14, footprint.minZ + 1);
             fg.add(backWall);
 
             const leftWall = new THREE.Mesh(
                 new THREE.BoxGeometry(2, 26, footprint.depth),
-                this._mat(accentColor, FLOOR_SIDE_WALL_OPACITY)
+                this._mat(FLOOR_WALL_COLOR, FLOOR_SIDE_WALL_OPACITY)
             );
             leftWall.position.set(footprint.minX, baseY + 14, fz);
             fg.add(leftWall);
 
             const rightWall = new THREE.Mesh(
                 new THREE.BoxGeometry(2, 26, footprint.depth),
-                this._mat(accentColor, FLOOR_SIDE_WALL_OPACITY)
+                this._mat(FLOOR_WALL_COLOR, FLOOR_SIDE_WALL_OPACITY)
             );
             rightWall.position.set(footprint.maxX, baseY + 14, fz);
             fg.add(rightWall);
