@@ -67,6 +67,16 @@ export class CanteenScene {
         this._lastFrame = null;
     }
 
+    // 对外只读：最近一次 update 的稳定帧（animate() 复用，避免触达私有字段）。
+    get lastFrame() {
+        return this._lastFrame;
+    }
+
+    // 对外清场入口（campus 切换时由 core 调用），内部仍走 _clear()。
+    clearScene() {
+        this._clear();
+    }
+
     // 点层 / 楼层 Tab → 飞入该层（非焦点层滑开）。
     focusFloor(floorId) {
         this.mode = 'focus';
@@ -99,10 +109,16 @@ export class CanteenScene {
     // ---- 内部：场景构建 ----
 
     _clear() {
+        // SpriteMaterial.dispose() 不会释放其 .map 纹理（_label 的 CanvasTexture），
+        // 而 update()/_rebuild() 每帧重建标签，故须显式 dispose 纹理避免 GPU 泄漏。
+        const disposeMat = m => {
+            m?.map?.dispose?.();
+            m?.dispose?.();
+        };
         const dispose = obj => obj.traverse?.(node => {
             node.geometry?.dispose?.();
-            if (Array.isArray(node.material)) node.material.forEach(m => m.dispose?.());
-            else node.material?.dispose?.();
+            if (Array.isArray(node.material)) node.material.forEach(disposeMat);
+            else disposeMat(node.material);
         });
         while (this.group.children.length) {
             const child = this.group.children.pop();
