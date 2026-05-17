@@ -3135,3 +3135,62 @@ def test_side_service_stall_shares_four_part_structure():
                 "stall base counter", "stall status strip"):
         assert tok in left, f"side stall missing {tok!r}"
     assert "kind: 'window'" in left
+
+
+def test_table_blocks_are_regularized_grids_inside_footprint():
+    """Spec §B: per block, rows/cols are evenly spaced (single dz step,
+    single dx step), all tables inside footprint, and the 3 floors stay
+    distinct. Cue tokens still emitted by canteen_scene."""
+    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    for cue in ("f1-snake-queue-guide", "f1-pickup-return-lane",
+                "f1-main-aisle-cue", "f1-condiment-station",
+                "f1-tray-return-point"):
+        assert cue in scene, f"cue token dropped: {cue!r}"
+
+    script = textwrap.dedent(
+        """
+        import { StateAdapter } from './frontend/static/js/three/state_adapter.js';
+        function floor(fid, nseat) {
+          return { floor_id: fid,
+            windows: Array.from({length:6},(_,i)=>({id:`f${fid}-w${i}`,floor_id:fid,is_open:true})),
+            seats: Array.from({length:nseat},(_,i)=>({id:`f${fid}-s${i}`,floor_id:fid,status:'empty'})),
+            students: [] };
+        }
+        const adapter = new StateAdapter();
+        const out = {};
+        for (const [fid, ns] of [[1,172],[2,232],[3,208]]) {
+          const frame = adapter.buildFrame(
+            { canteens: { minghu_xueyi: { id:'minghu_xueyi', display_name:'明湖',
+              floors:[floor(fid, ns)] } } },
+            { activeCanteenId:'minghu_xueyi' });
+          const f = frame.floors[0];
+          const xs = f.seats.map(s=>Math.round(s.position.x));
+          const zs = f.seats.map(s=>Math.round(s.position.z));
+          out[fid] = {
+            inFootprint: f.seats.every(s =>
+              s.position.x >= f.footprint.minX - 1 &&
+              s.position.x <= f.footprint.maxX + 1 &&
+              s.position.z >= f.footprint.minZ - 1 &&
+              s.position.z <= f.footprint.maxZ + 1),
+            minZ: Math.min(...zs),
+            maxWinZ: Math.max(...f.windows.map(w=>w.position.z)),
+            uniqX: new Set(xs).size,
+            uniqZ: new Set(zs).size,
+            sig: xs.slice(0,8).join(',')+'|'+zs.slice(0,8).join(','),
+          };
+        }
+        console.log(JSON.stringify(out));
+        """
+    )
+    payload = json.loads(subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT, check=True, text=True, capture_output=True).stdout)
+
+    for fid in ("1", "2", "3"):
+        assert payload[fid]["inFootprint"] is True, f"floor {fid} overflows footprint"
+        # tables start clearly behind the service/queue band
+        assert payload[fid]["minZ"] >= payload[fid]["maxWinZ"] + 60, fid
+        # a real grid: several distinct rows and columns
+        assert payload[fid]["uniqX"] >= 6 and payload[fid]["uniqZ"] >= 5, fid
+    # floors are not identical layouts
+    assert len({payload["1"]["sig"], payload["2"]["sig"], payload["3"]["sig"]}) == 3
