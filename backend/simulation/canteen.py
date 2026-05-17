@@ -258,15 +258,28 @@ class Canteen:
             * self.STAIR_TRAVEL_SECONDS_PER_FLOOR,
         )
 
+    # 当前楼层平均队列比最优楼层长超过此阈值时，允许跨层路由。
+    CROSS_FLOOR_QUEUE_THRESHOLD = 5
+
     def choose_window(self, rng=None, current_floor_id: Optional[int] = None) -> Window:
-        """学生实际选择窗口：在当前楼层开放窗口中真随机抽样。"""
+        """学生选窗口：优先同楼层，但当同楼层队列比其他楼层明显更长时跨层路由。"""
         open_windows = self._open_windows()
         current_floor_windows = [
             w for w in open_windows
             if current_floor_id is not None and w.floor_id == current_floor_id
         ]
-        candidate_windows = current_floor_windows or open_windows
-        return self._random_choice(candidate_windows, rng)
+        if not current_floor_windows:
+            return self._random_choice(open_windows, rng)
+
+        # 对比各楼层平均队列长度，决定是否跨层
+        other_floor_windows = [w for w in open_windows if w.floor_id != current_floor_id]
+        if other_floor_windows:
+            cur_avg = sum(w.queue_length for w in current_floor_windows) / len(current_floor_windows)
+            other_avg = sum(w.queue_length for w in other_floor_windows) / len(other_floor_windows)
+            if cur_avg - other_avg >= self.CROSS_FLOOR_QUEUE_THRESHOLD:
+                return self._random_choice(other_floor_windows, rng)
+
+        return self._random_choice(current_floor_windows, rng)
 
     def start_floor_transfer(self, student: "Student", from_floor_id: int, target_floor_id: int):
         student.current_floor_id = from_floor_id
