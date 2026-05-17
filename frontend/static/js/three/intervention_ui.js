@@ -11,6 +11,7 @@
 
 const API_BASE = '/api';
 const PANEL_ID = 'three-ops-console';
+const LEGEND_ID = 'twin-congestion-legend';
 
 const CSS = `
 #${PANEL_ID}{position:absolute;top:12px;right:12px;width:268px;max-height:calc(100% - 24px);
@@ -80,6 +81,23 @@ export class InterventionUI {
               <div class="ops-log"></div>
             </div>`;
         container.appendChild(root);
+        // 拥堵图例（青→琥珀→红），与 canteen_scene heatColor 语义连续；
+        // 仅 3D 运维台挂载时出现，纯展示、pointer-events 透传（见 .twin-legend CSS）。
+        if (!container.querySelector(`#${LEGEND_ID}`)) {
+            const legend = document.createElement('div');
+            legend.id = LEGEND_ID;
+            legend.className = 'twin-legend';
+            legend.innerHTML = `
+                <span class="twin-legend-title">拥堵</span>
+                <div>
+                  <div class="twin-legend-scale"></div>
+                  <div class="twin-legend-ends">
+                    <span class="twin-legend-min">畅通</span>
+                    <span class="twin-legend-max">拥堵</span>
+                  </div>
+                </div>`;
+            container.appendChild(legend);
+        }
         this.root = root;
         this.kpiEl = root.querySelector('.ops-kpi');
         this.gridEl = root.querySelector('.ops-grid');
@@ -89,6 +107,8 @@ export class InterventionUI {
     _teardownDom() {
         const existing = document.getElementById(PANEL_ID);
         if (existing) existing.remove();
+        const legend = document.getElementById(LEGEND_ID);
+        if (legend) legend.remove();
         this.root = null;
     }
 
