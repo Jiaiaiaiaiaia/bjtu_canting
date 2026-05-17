@@ -100,6 +100,8 @@ Disallowed in this step:
 - Window meshes keep `userData { floorId, kind: 'window', windowId }` and the intervention hooks (`_activeWindowInterventionEffect`, `_tagWindowInterventionBody`, `_addWindowInterventionPulse`) so the ops panel and `is_open`/`closing`/`is_serving` states still render.
 - Window labels keep the `alwaysReadableWindowLabel` flag and `WINDOW_LABEL_RENDER_ORDER`-based `renderOrder`.
 - Existing `test_frontend_three_js_contract.py` 1F tokens remain satisfied (kept as-is or migrated with a deliberate, documented test update; no silent weakening). Forbidden tokens (`f1-added-window`, `f1-fake-window`, `addedWindowCount`, `fabricatedWindow`) never appear.
+- **Cue tokens live inside the helper being rewritten.** `f1-snake-queue-guide`, `f1-pickup-return-lane`, `f1-main-aisle-cue`, `f1-condiment-station`, `f1-tray-return-point` are emitted by `_addFloorIdentityCues` (canteen_scene.js ~1811+), and section B regularization will move those meshes. The plan must explicitly re-emit these exact cue tokens from the new layout code (or migrate each with a stated `test_frontend_three_js_contract.py` edit). They cannot be silently dropped while rewriting the helper.
+- The adapter uses split bay ids `f1-front-service-band-left/center/right`; the contract test only requires the substring `f1-front-service-band`. Preserving any one split id keeps the test green — a planner must not "consolidate" these away without re-checking the test.
 - All six 1F backend windows continue to render as real open windows in the front service band; opened/closed windows from interventions appear in the same band, never scattered into the dining area.
 - Phase 2 single-canteen API behavior is untouched by construction (renderer-only change).
 
@@ -109,7 +111,9 @@ Disallowed in this step:
 2. `node --check frontend/static/js/three/canteen_scene.js`
 3. `PYTHONPATH=backend ./.venv/bin/python -m pytest backend/tests/test_frontend_three_js_contract.py -q`
 4. Full regression: `PYTHONPATH=backend ./.venv/bin/python -m pytest backend/tests -q` (must stay green; any intentional contract test edit stated in the commit message).
-5. Browser check on each floor focus: window shows the four-part stall with per-floor material; tables are aligned in even rows with a readable main aisle and queue buffer; students orient along travel and queue in lanes; paths do not cut through furniture; no console errors; no bloom/glare.
+5. Browser check on each floor focus: window shows the four-part stall with per-floor material; tables are aligned in even rows with a readable main aisle and queue buffer; students orient along travel and queue in lanes; no console errors; no bloom/glare.
+
+**Section C acceptance signal (path readability).** Because "paths do not cut through tables/walls" has no existing test, the plan must add one focused contract assertion in `test_frontend_three_js_contract.py`: drive `StateAdapter` with a snapshot containing a moving student and assert every generated path waypoint stays inside `floor.footprint` bounds and does not fall inside any `tableBlocks` axis-aligned footprint (within a small clearance). This is the machine-checkable counterpart to the manual browser observation; section A (window tokens/userData) and section B (footprint/table tokens) already have token/footprint coverage.
 
 ## Risks
 
