@@ -104,3 +104,13 @@ def test_canteen_scene_split_and_v7_geometry():
     assert "canteenScene.tick(" in ma.group(0), "animate() must call canteenScene.tick() after V4"
     assert "canteenScene.update(" not in ma.group(0), \
         "animate() must NOT call canteenScene.update() (per-RAF rebuild removed)"
+
+
+def test_intervention_ui_hooks_preserved_after_restyle():
+    s = (THREE_DIR / "intervention_ui.js").read_text(encoding="utf-8")
+    for tok in ("three-ops-console", "ops-grid", "ops-win", "ops-log",
+                "twin-congestion-legend",
+                "/campus/canteens/", "/windows/", "/toggle"):
+        assert tok in s, f"intervention hook lost: {tok!r}"
+    # 玻璃观感类（CSS 由 style.css 提供，这里只需结构 className 仍可被样式命中）
+    assert "ops-kpi" in s

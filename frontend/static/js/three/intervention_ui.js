@@ -13,17 +13,19 @@ const API_BASE = '/api';
 const PANEL_ID = 'three-ops-console';
 const LEGEND_ID = 'twin-congestion-legend';
 
+// 内联样式只保留结构必需项；颜色 / 玻璃质感由 style.css .twin-immersive 覆盖（V9 任务）。
+// V7 冷青色值：bg #07111d / accent #2dd4bf / muted #8fb7b2 / border #2c5366。
 const CSS = `
 #${PANEL_ID}{position:absolute;top:12px;right:12px;width:268px;max-height:calc(100% - 24px);
- display:flex;flex-direction:column;gap:10px;font-family:sans-serif;color:#cfe9e6;
- background:rgba(7,17,29,.82);border:1px solid #315467;border-radius:10px;padding:12px;
+ display:flex;flex-direction:column;gap:10px;color:#cfe9e6;
+ background:rgba(7,17,29,.82);border:1px solid #315467;border-radius:8px;padding:12px;
  box-sizing:border-box;z-index:6;pointer-events:auto}
 #${PANEL_ID} .ops-kpi{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 #${PANEL_ID} .ops-kpi .cell{background:rgba(45,212,191,.08);border:1px solid #2c5366;
- border-radius:6px;padding:6px 8px}
+ border-radius:6px;padding:5px 8px}
 #${PANEL_ID} .ops-kpi .cell b{display:block;font-size:18px;color:#2dd4bf;line-height:1.1}
 #${PANEL_ID} .ops-kpi .cell span{font-size:11px;color:#8fb7b2}
-#${PANEL_ID} .ops-title{font-size:12px;color:#8fb7b2;letter-spacing:1px;margin:2px 0}
+#${PANEL_ID} .ops-title{font-size:11px;color:#8fb7b2;letter-spacing:1px;margin:2px 0}
 #${PANEL_ID} .ops-floor{margin-bottom:6px}
 #${PANEL_ID} .ops-floor>label{font-size:11px;color:#9fc6c1}
 #${PANEL_ID} .ops-win{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
