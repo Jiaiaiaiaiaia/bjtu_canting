@@ -2181,28 +2181,29 @@ export class CanteenScene {
             );
             void slab;
 
-            // ---- Style B: 正面开放（建筑剖面模型），后墙+侧墙实体水泥色 ----
+            // ---- Style B: 正面开放，后墙+侧墙填满楼层间距（FLOOR_V≈104，墙高90）----
+            const WALL_H = 90;  // 填满楼层间距 (FLOOR_V-~14)
+            const wallCY = baseY + WALL_H / 2;
 
-            // 后墙 + 侧墙：实体建筑灰
             const backWall = new THREE.Mesh(
-                new THREE.BoxGeometry(footprint.width, 26, 2),
+                new THREE.BoxGeometry(footprint.width, WALL_H, 2),
                 this._mat(FLOOR_WALL_COLOR, FLOOR_BACK_WALL_OPACITY)
             );
-            backWall.position.set(footprint.centerX, baseY + 14, footprint.minZ + 1);
+            backWall.position.set(footprint.centerX, wallCY, footprint.minZ + 1);
             fg.add(backWall);
 
             const leftWall = new THREE.Mesh(
-                new THREE.BoxGeometry(2, 26, footprint.depth),
+                new THREE.BoxGeometry(2, WALL_H, footprint.depth),
                 this._mat(FLOOR_WALL_COLOR, FLOOR_SIDE_WALL_OPACITY)
             );
-            leftWall.position.set(footprint.minX, baseY + 14, fz);
+            leftWall.position.set(footprint.minX, wallCY, fz);
             fg.add(leftWall);
 
             const rightWall = new THREE.Mesh(
-                new THREE.BoxGeometry(2, 26, footprint.depth),
+                new THREE.BoxGeometry(2, WALL_H, footprint.depth),
                 this._mat(FLOOR_WALL_COLOR, FLOOR_SIDE_WALL_OPACITY)
             );
-            rightWall.position.set(footprint.maxX, baseY + 14, fz);
+            rightWall.position.set(footprint.maxX, wallCY, fz);
             fg.add(rightWall);
 
             this._addWallDepthCues(fg, footprint, baseY, floor.floor_id);
@@ -2412,14 +2413,14 @@ export class CanteenScene {
             }
         } else {
             // A 总览：正面居中视角，X 居中，Y 在楼层中段偏上，Z 正前方适当距离。
-            const centerY = topY * OVERVIEW_LOOK_Y_RATIO + OVERVIEW_LOOK_Y_OFFSET;
-            const frontZ = Math.max(OVERVIEW_CAMERA_Z, buildingFootprint.maxZ + 300);
-            this._camTarget.pos.set(
-                buildingFootprint.centerX,
-                topY * 0.5 + OVERVIEW_CAMERA_Y_PADDING,
-                frontZ
-            );
-            this._camTarget.look.set(buildingFootprint.centerX, centerY, buildingFootprint.centerZ);
+            // 3/4 斜俯视角：X 偏右+侧面可见，Y 高于楼顶，Z 正前方
+            const obliqueX = buildingFootprint.centerX + buildingFootprint.width * 0.35;
+            const obliqueY = topY + 180;
+            const obliqueZ = Math.max(OVERVIEW_CAMERA_Z, buildingFootprint.maxZ + 320);
+            const lookX = buildingFootprint.centerX - buildingFootprint.width * 0.05;
+            const lookY = topY * 0.42 + OVERVIEW_LOOK_Y_OFFSET;
+            this._camTarget.pos.set(obliqueX, obliqueY, obliqueZ);
+            this._camTarget.look.set(lookX, lookY, buildingFootprint.centerZ);
         }
     }
 
