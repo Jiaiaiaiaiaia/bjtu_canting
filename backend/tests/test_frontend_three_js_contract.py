@@ -47,3 +47,14 @@ def test_scene3d_modules_exist_and_facade_preserved():
         assert snippet in s              # 既有契约不破
     for m in ("state_adapter.js", "canteen_scene.js", "intervention_ui.js"):
         assert (THREE_DIR / m).exists()
+
+
+def test_scene_fx_module_contract():
+    s = (THREE_DIR / "scene_fx.js").read_text(encoding="utf-8")
+    assert "export class SceneFX" in s
+    assert "three/addons/postprocessing/EffectComposer.js" in s
+    assert "UnrealBloomPass" in s
+    assert "ACESFilmicToneMapping" in s
+    # 失败降级、不触发 .three-fallback
+    assert "this.enabled = false" in s
+    assert "renderer.render(" in s
