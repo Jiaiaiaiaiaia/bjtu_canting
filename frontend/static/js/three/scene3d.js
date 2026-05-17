@@ -18,12 +18,14 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { SceneFX } from './scene_fx.js';
 import { StateAdapter } from './state_adapter.js';
 import { CanteenScene } from './canteen_scene.js';
 import { InterventionUI } from './intervention_ui.js';
 
 let containerEl = null;
 let renderer = null;
+let sceneFX = null;
 let scene = null;
 let camera = null;
 let controls = null;
@@ -72,7 +74,10 @@ function init(container) {
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
+
+    scene.fog = new THREE.Fog(0x07111d, 520, 2200);
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -84,6 +89,9 @@ function init(container) {
     sun.position.set(160, 420, 260);
     sun.castShadow = true;
     scene.add(sun);
+    const teal = new THREE.PointLight(0x52d6d1, 1.2, 800);
+    teal.position.set(160, 180, 120);
+    scene.add(teal);
 
     const floor = new THREE.Mesh(
         new THREE.PlaneGeometry(640, 460),
@@ -112,6 +120,9 @@ function init(container) {
 
     raycaster = new THREE.Raycaster();
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
+
+    sceneFX = new SceneFX();
+    sceneFX.mount(renderer, scene, camera);
 
     resize();
     animate();
@@ -146,6 +157,7 @@ function resize() {
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    if (sceneFX) sceneFX.setSize(width, height);
 }
 
 function showFallback(container) {
@@ -162,7 +174,7 @@ function animate() {
         canteenScene.update(canteenScene.lastFrame);
     }
     if (controls) controls.update();
-    renderer.render(scene, camera);
+    sceneFX ? sceneFX.render() : renderer.render(scene, camera);
 }
 
 function clearContent() {
@@ -337,6 +349,7 @@ function dispose() {
     interventionUI = null;
     raycaster = null;
     lastAppState = null;
+    if (sceneFX) { sceneFX.dispose(); sceneFX = null; }
 }
 
 window.addEventListener('resize', resize);

@@ -58,3 +58,18 @@ def test_scene_fx_module_contract():
     # 失败降级、不触发 .three-fallback
     assert "this.enabled = false" in s
     assert "renderer.render(" in s
+
+
+def test_scene3d_fx_and_raf_decouple_contract():
+    s = (THREE_DIR / "scene3d.js").read_text(encoding="utf-8")
+    # 契约 token 仍在
+    for tok in ("window.CanteenApp3D = {", "init(container)",
+                "render(snapshot, appState)", "dispose()",
+                "visibleCanteens", "pendingCanteens",
+                "let webglAvailable = true;", "webglAvailable = false;",
+                "if (!webglAvailable || !renderer || !contentGroup) {",
+                "showFallback(document.getElementById('three-stage'));"):
+        assert tok in s, f"missing contract token: {tok!r}"
+    # scene_fx 接入（本任务只接 composer/灯光雾；不动 animate 的 update→tick）
+    assert "import { SceneFX } from './scene_fx.js'" in s
+    assert "sceneFX" in s
