@@ -153,7 +153,7 @@ const MINGHU_FLOOR_LAYOUTS = {
         ],
         widthBias: 12,
         depthBias: 8,
-        rearNotchDepth: 32,
+        rearNotchDepth: 0,
         cueNames: [
             'featureFoodCourt coffee island',
             'featureFoodCourt hotpot zone',
@@ -207,7 +207,7 @@ const MINGHU_FLOOR_LAYOUTS = {
         ],
         widthBias: 0,
         depthBias: 0,
-        rearNotchDepth: 40,
+        rearNotchDepth: 0,
         cueNames: [
             'restaurantDiningRoom booth seating',
             'restaurantDiningRoom service aisle',
