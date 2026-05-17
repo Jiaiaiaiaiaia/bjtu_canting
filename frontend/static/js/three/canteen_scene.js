@@ -1211,6 +1211,8 @@ export class CanteenScene {
         const shaftX = buildingFootprint.minX + SIDE_ENTRANCE_X - 3.5;
         const shaftZ = buildingFootprint.centerZ;
         const shaftHeight = topY + floorHeight + 8;
+        const [entranceLowerZ, entranceUpperZ] = this._entranceMarkersForFootprint(buildingFootprint).map(e => e.z);
+        const stairZSpan = entranceUpperZ - entranceLowerZ;
         const activeFloor = this.mode === 'focus' && this.focusFloorId != null
             ? floors.find(floor => floor.floor_id === this.focusFloorId)
             : floors[0];
@@ -1219,7 +1221,7 @@ export class CanteenScene {
         this._box(
             group,
             'elevator glass shaft',
-            [15, shaftHeight, 20],
+            [15, shaftHeight, stairZSpan + 8],
             [shaftX, shaftHeight / 2 - 3, shaftZ],
             this._photoMat(0x9fe8ef, {
                 opacity: 0.28,
@@ -1298,9 +1300,9 @@ export class CanteenScene {
                     'stair step stack',
                     [13, 1.0, 4.2],
                     [
-                        shaftX + 22,
+                        shaftX + 12.5,
                         lower + 13 + t * (span - 6),
-                        shaftZ - 17 + t * 34,
+                        entranceLowerZ + t * stairZSpan,
                     ],
                     this._photoMat(0xd7e0dc, { roughness: 0.42 }),
                     { kind: 'stairCore' }

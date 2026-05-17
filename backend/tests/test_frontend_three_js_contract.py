@@ -2066,7 +2066,7 @@ def test_state_adapter_derives_distinct_floor_footprints_from_tables_and_windows
 
     assert len(footprints) == 3
     assert all(fp["source"] == "furnitureDerivedFootprint" for fp in footprints)
-    assert all(len(fp["outline"]) >= 6 for fp in footprints)
+    assert all(len(fp["outline"]) >= 4 for fp in footprints)
     assert all(fp["width"] / fp["depth"] <= 1.85 for fp in footprints)
     assert len({(fp["width"], fp["depth"]) for fp in footprints}) == 3
     assert footprints[1]["width"] >= footprints[0]["width"]

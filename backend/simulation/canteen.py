@@ -364,6 +364,7 @@ class Canteen:
                 "from_floor_id": s.current_floor_id,
                 "target_floor_id": s.target_floor_id,
                 "floor_switch_progress": progress,
+                "stair_step": min(7, int(progress * 8)),
             })
         for seat in self.seats:
             if seat.student:
