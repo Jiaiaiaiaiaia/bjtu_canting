@@ -302,7 +302,7 @@ Expected: FAIL。
 2. `init()` 内 renderer 创建后：`renderer.shadowMap.type = THREE.PCFSoftShadowMap;`；`scene.fog = new THREE.Fog(0x07111d, /*near*/ 520, /*far*/ 2200);`（按现单食堂尺度，FOCUS/OVERVIEW 都不雾穿，必要时实测微调）；现有 Hemisphere/Directional 之外加一盏冷青 PointLight（参 V7 `0x52d6d1`）。
 3. `init()` 末（`animate()` 前）：`sceneFX = new SceneFX(); sceneFX.mount(renderer, scene, camera);`。
 4. `resize()` 末追加：`if (sceneFX) sceneFX.setSize(width, height);`。
-5. **RAF 解耦**：`animate()` 内把 `canteenScene.update(canteenScene.lastFrame)` 改为 `canteenScene.tick()`（只推进相机/层位移，见 Task V4）；末尾 `renderer.render(scene, camera)` 改为 `sceneFX ? sceneFX.render() : renderer.render(scene, camera)`。
+5. **RAF 解耦**：`animate()` 内现有 `if (canteenScene && lastAppState?.view === 'canteen') { canteenScene.update(canteenScene.lastFrame); }`——把其中 `canteenScene.update(canteenScene.lastFrame)` 换成 `canteenScene.tick()`，**保留同样的外层守卫**（`canteenScene && lastAppState?.view === 'canteen'`），使 campus 路径与无帧场景不抛；末尾 `renderer.render(scene, camera)` 改为 `sceneFX ? sceneFX.render() : renderer.render(scene, camera)`。
 6. `dispose()` 内追加 `if (sceneFX) { sceneFX.dispose(); sceneFX = null; }`。
 7. **不动**任何契约 token / `webglAvailable` 兜底分支 / `showFallback`。`render(snapshot,appState)` 仍走既有 `renderCanteen/renderCampus`（数据重建在此，见 V4）。
 
@@ -337,16 +337,29 @@ git -c user.name=Sissi commit -m "feat(3d): scene3d lights/fog/tonemap + compose
 # append to backend/tests/test_frontend_three_js_contract.py
 def test_canteen_scene_split_and_v7_geometry():
     s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
-    # update(frame)=快照重建（含 _rebuild）；tick()=RAF 推进（无 _rebuild）
     import re
     assert "tick(" in s, "missing tick() (RAF advance entry)"
-    mt = re.search(r"tick\s*\([^)]*\)\s*\{.*?\n  \}", s, re.S)
-    assert mt and "_rebuild(" not in mt.group(0), "tick() must not _rebuild()"
-    mu = re.search(r"update\s*\(\s*frame\s*\)\s*\{.*?\n  \}", s, re.S)
-    assert mu and "_rebuild(" in mu.group(0), "update(frame) must _rebuild() on snapshot"
+    assert "update(frame)" in s.replace(" ", "") or "update(frame)" in s
+    assert "_rebuild(" in s
+
+    # Indentation-robust: slice a class method body from its signature up to the
+    # NEXT class-method declaration (4-space-indented `name(...) {`) or EOF.
+    # Does NOT depend on the method's closing-brace indentation.
+    def method_body(src, name):
+        m = re.search(r"\n\s*" + re.escape(name) + r"\s*\([^)]*\)\s*\{", src)
+        if not m:
+            return None
+        start = m.end()
+        nxt = re.search(r"\n {4}[A-Za-z_]\w*\s*\([^)]*\)\s*\{", src[start:])
+        return src[start: start + (nxt.start() if nxt else len(src) - start)]
+
+    tb = method_body(s, "tick")
+    ub = method_body(s, "update")
+    assert tb is not None and "_rebuild(" not in tb, "tick() must NOT _rebuild() (RAF path)"
+    assert ub is not None and "_rebuild(" in ub, "update(frame) must _rebuild() on snapshot"
     # V7 几何元素存在
-    for tok in ("plinth", "glass", "stair", "BoxGeometry", "Fog" if False else "Group"):
-        assert tok in s
+    for tok in ("plinth", "glass", "stair", "BoxGeometry", "Group"):
+        assert tok in s, f"missing V7 geometry token: {tok!r}"
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -359,8 +372,8 @@ Expected: FAIL。
 关键改动（保持类名 `CanteenScene`、`group`、`focusFloor/resetView/trackStudent` 公共面不变）：
 1. **拆分**：
    - `update(frame)`：保存帧、`_floorCount`、`_rebuild(frame)`、`_recomputeCameraTarget()`（**只在快照到来时重建几何**）。
-   - 新增 `tick()`：仅 `_animateFloors()` + `_animateCamera()`（RAF 每帧推进，**不** `_rebuild`）。
-   - 删除 `update()` 里对 `_animateFloors/_animateCamera` 的每帧调用改由 `tick()` 承担；`scene3d.animate()` 改调 `tick()`（Task V3 已对齐）。
+   - 新增 `tick()`：仅 `_animateFloors()` + `_animateCamera()`（RAF 每帧推进，**不** `_rebuild`）。**首帧前安全**：`tick()` 必须能在尚未收到任何 `update(frame)` 时被调用而不抛——开头 `if (!this._lastFrame || this._floorGroups.size === 0) return;`（RAF 在 `init()` 即启动，早于首个 `render()`）。
+   - 删除 `update()` 里对 `_animateFloors/_animateCamera` 的每帧调用改由 `tick()` 承担；`scene3d.animate()` 改调 `tick()`（Task V3 已对齐，含原外层守卫保留）。
 2. **V7 几何**（每层 `fg` 组内，尺度沿用现单食堂世界单位；参照 V7 函数结构但坐标按现 `floor.baseY/z`）：
    - 站台基座 `plinth`（深青 `0x13243a` 大 slab）。
    - 每层：`slab`（隔层 `0x263a50`/`0x243f56`，热力态用 heatColor）、**玻璃幕墙前壁** `front glass`（半透 `0xbdebf2` opacity~.2；`剖`(cutaway) 开则不建前壁）、半透背/侧墙、楼层标牌 sprite（`{id} · {windows}窗 · {seats}座`，非焦点 opacity 降）。
@@ -517,7 +530,7 @@ Expected: FAIL。
 
 - [ ] **Step 3: 实现**
 
-- `index.html`：在既有 `scene3d.js` module `<script type="module">` **之前**加 `scene_fx.js` 不需单独 `<script>`（被 scene3d import）；`immersive_ui.js` 同理被 scene3d import 即可——**优先**走 import 而非新增 script 标签（减少全局）。若契约测试要求 html 出现文件名，则按 e2e 习惯加注释式 `<link rel="modulepreload">` 或保留既有 module 标签风格（与 state_adapter/canteen_scene/intervention_ui 一致）：为与现状一致，**加 `<script type="module" src=".../scene_fx.js">` 与 `.../immersive_ui.js`** 到既有四个 module 标签旁（顺序：state_adapter, canteen_scene, intervention_ui, scene_fx, immersive_ui, scene3d）。
+- `index.html`：**明确动作 —— 新增两个 module script 标签**：`<script type="module" src="{{ url_for('static', filename='js/three/scene_fx.js') }}"></script>` 与 `immersive_ui.js` 同形式，与既有 `state_adapter/canteen_scene/intervention_ui/scene3d` 四个 module 标签并列，**顺序**：state_adapter → canteen_scene → intervention_ui → scene_fx → immersive_ui → scene3d。理由：运行时正确性不依赖此加载顺序（`scene3d.js` 自身 `import` scene_fx/immersive_ui），但 Task V7 契约测试 `test_index_loads_new_three_modules...` 与文件结构表都要求这两个文件名出现在 `index.html`，故以新增 script 标签满足（与现状风格一致，不引入 modulepreload 等新写法）。
 - `scene3d.js`：`import { ImmersiveUI } from './immersive_ui.js';`；`init()` 内 `immerseUI = new ImmersiveUI(); immerseUI.mount(container);` 暴露窄 `sceneApi`（`focusFloor/resetView/setCutaway/setHeat/resetCamera`）给它；`render()` 内 `immerseUI.update(frame, sceneApi)`；`dispose()` 清理。剖/热触发 `canteenScene` 一次 `update(lastFrame)` 重建（非每帧）。
 
 - [ ] **Step 4: 验证 + 语法门 + 回归**
