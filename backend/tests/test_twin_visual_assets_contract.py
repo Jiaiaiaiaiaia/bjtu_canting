@@ -19,3 +19,10 @@ def test_importmap_has_postprocessing_entries():
                  "three/addons/postprocessing/OutputPass.js",
                  "three/addons/shaders/CopyShader.js"):
         assert spec in html, f"importmap missing {spec}"
+
+def test_style_css_immersive_scope_and_responsive():
+    css = (ROOT / "frontend/static/css/style.css").read_text(encoding="utf-8")
+    assert ".twin-immersive" in css
+    assert "#three-stage" in css
+    assert "@media" in css and "960px" in css
+    assert "backdrop-filter" in css
