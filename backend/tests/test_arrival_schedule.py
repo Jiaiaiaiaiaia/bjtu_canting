@@ -43,3 +43,14 @@ def test_constant_schedule_arrivals_match_legacy_expovariate():
             break
         expect.append(round(acc, 9))
     assert t1 == expect
+
+
+def test_trace_and_live_share_schedule_same_seed():
+    """非常量 λ(t)：trace 预生成与实时生成器在同 seed 下到达时刻序列一致。"""
+    from simulation.arrival_schedule import ArrivalSchedule
+    from simulation.random_streams import build_random_streams
+    sch = ArrivalSchedule(total_arrivals=200, horizon_seconds=600,
+                          baseline=0.1, ramp=(150, 450, 1.0), pulses=[(300,0.6,40)])
+    a = sch.sample_arrivals(build_random_streams(5).arrival)
+    b = sch.sample_arrivals(build_random_streams(5).arrival)
+    assert a == b and len(a) > 0

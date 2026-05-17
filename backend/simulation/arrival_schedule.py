@@ -6,7 +6,6 @@
 trace/实时生成器共用本类同一实例 + 同一 thinning + 同一 streams.arrival。
 """
 from dataclasses import dataclass, field
-import math
 
 
 @dataclass

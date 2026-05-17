@@ -114,6 +114,34 @@ class ArrivalGenerator:
             "simulation_seconds",
             self.config["peak_window_minutes"] * 60.0,
         )
+
+        schedule = self.config.get("arrival_schedule")
+        if schedule:
+            # 非常量 λ(t)：live 生成器与 trace 预生成共用同一 ArrivalSchedule
+            # + 同一 thinning（spec §3.5/§5.1）。总量守恒：期望总到达
+            # = 恒定速率(N·α·coverage/T) × 时长，只改时间形状不改总量。
+            from .arrival_schedule import ArrivalSchedule
+
+            ramp = schedule.get("ramp")
+            sch = ArrivalSchedule(
+                total_arrivals=rate_per_sec * stop_after,
+                horizon_seconds=stop_after,
+                baseline=schedule.get("baseline", 1.0),
+                ramp=tuple(ramp) if ramp else None,
+                pulses=[tuple(p) for p in schedule.get("pulses", [])],
+            )
+            last_arrival = 0.0
+            for arrival_at in sch.sample_arrivals(self.rng):
+                yield self.env.timeout(max(0.0, arrival_at - last_arrival))
+                last_arrival = arrival_at
+                student = self._spawn_student()
+                from .student import student_lifecycle  # type: ignore[attr-defined]
+                self.env.process(student_lifecycle(
+                    self.env, student, self.router,
+                    self.canteens, self.campus, self.coordinator,
+                ))
+            return
+
         while self.env.now < stop_after:
             interval = self.rng.expovariate(rate_per_sec)
             if self.env.now + interval >= stop_after:

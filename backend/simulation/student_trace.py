@@ -23,6 +23,32 @@ def build_single_canteen_traces(config: dict, streams) -> list[StudentTrace]:
         raise ValueError("arrival_rate must be positive")
 
     stop_after = float(config["total_time"]) * 60.0
+
+    schedule = config.get("arrival_schedule")
+    if schedule:
+        # 非常量 λ(t)：trace 与实时生成器共用同一 ArrivalSchedule + 同一
+        # streams.arrival thinning（spec §3.5/§5.1）。总量守恒：期望总到达
+        # = 恒定速率 × 时长，仅时间再分布。
+        from .arrival_schedule import ArrivalSchedule
+
+        ramp = schedule.get("ramp")
+        sch = ArrivalSchedule(
+            total_arrivals=rate_per_sec * stop_after,
+            horizon_seconds=stop_after,
+            baseline=schedule.get("baseline", 1.0),
+            ramp=tuple(ramp) if ramp else None,
+            pulses=[tuple(p) for p in schedule.get("pulses", [])],
+        )
+        return [
+            StudentTrace(
+                arrival_at=t,
+                patience_z=streams.routing.normalvariate(0.0, 1.0),
+                service_z=streams.service.normalvariate(0.0, 1.0),
+                eat_z=streams.eat.normalvariate(0.0, 1.0),
+            )
+            for t in sch.sample_arrivals(streams.arrival)
+        ]
+
     arrival_at = 0.0
     traces: list[StudentTrace] = []
     while True:
