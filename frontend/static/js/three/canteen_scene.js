@@ -2040,6 +2040,19 @@ export class CanteenScene {
         avatar.position.set(p.x, p.y, p.z);
         avatar.userData = { floorId, kind: 'student', studentId: student.id };
 
+        // Face the direction of travel: rotate only when there is a real
+        // current→target delta (moving students). Seated/queued avatars have
+        // target≈position (or none) and keep a stable default facing.
+        const cur = student.position3d;
+        const dest = student.target;
+        if (cur && dest) {
+            const dxTravel = dest.x - cur.x;
+            const dzTravel = dest.z - cur.z;
+            if (dxTravel * dxTravel + dzTravel * dzTravel > 1e-3) {
+                avatar.rotation.y = Math.atan2(dxTravel, dzTravel);
+            }
+        }
+
         const isTracked = this.trackedStudentId != null
             && String(student.id) === this.trackedStudentId;
         const clothingColor = stableStudentClothingColor(student);

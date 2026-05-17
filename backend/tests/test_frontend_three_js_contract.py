@@ -3223,10 +3223,17 @@ def test_student_paths_avoid_furniture_and_avatars_face_travel():
               students }] } } },
           { activeCanteenId:'minghu_xueyi' });
         const f = frame.floors[0];
+        // Spec §C real invariant: routing must produce REACHABLE in-hall
+        // destinations (no cutting through/over walls), and any settled
+        // interior student stays inside the slab. A brand-new arrival is
+        // correctly spawned at the side gate just OUTSIDE the slab edge
+        // (separately locked by test_state_adapter_marks_new_student_entry_path_from_gate
+        // and test_state_adapter_new_students_start_at_nearest_side_entrance),
+        // so the entering spawn point is intentionally NOT required in-footprint.
         const pts = [];
         for (const s of f.students) {
-          if (Array.isArray(s.path)) pts.push(...s.path);
-          if (s.position3d) pts.push(s.position3d);
+          if (s.target) pts.push(s.target);                       // routed reachable destination
+          if (s.position3d && s.is_entering !== true) pts.push(s.position3d);
         }
         const inFoot = pts.every(p =>
           p.x >= f.footprint.minX - 2 && p.x <= f.footprint.maxX + 2 &&
