@@ -36,6 +36,7 @@ function showPage(name) {
     pages.forEach(p => p.classList.toggle('active', p.id === `${name}-page`));
     navLinks.forEach(l => l.classList.toggle('active', l.dataset.page === name));
     if (name === 'history') loadHistoryList();
+    syncImmersiveShell();
 }
 
 // ================================== 参数配置
@@ -454,6 +455,13 @@ function applyViewState() {
             btn.classList.toggle('active', btn.dataset.render === state.renderMode);
         });
     }
+    syncImmersiveShell();
+}
+
+function syncImmersiveShell() {
+    const onSim = document.getElementById('simulation-page')?.classList.contains('active');
+    const isImmersive = !!onSim && state.mode === 'campus' && state.renderMode === '3d';
+    document.body.classList.toggle('twin-immersive', isImmersive);
 }
 
 function activeCanteenSnapshot(data) {

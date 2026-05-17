@@ -153,3 +153,17 @@ def test_preset_first_uses_single_canteen_and_3d_default():
     assert "renderMode: '2d'" not in s
     assert "state.renderMode = '2d';" not in s
     assert "canvas_renderer" in s.lower() or "CanvasRenderer" in s
+
+
+def test_sync_immersive_shell_wired_and_no_2d_literal():
+    s = MAIN.read_text(encoding="utf-8")
+    assert "function syncImmersiveShell()" in s
+    assert "twin-immersive" in s
+    assert "getElementById('simulation-page')" in s or 'simulation-page' in s
+    import re
+    sp = re.search(r"function showPage\([^)]*\)\s*\{.*?\n\}", s, re.S)
+    av = re.search(r"function applyViewState\([^)]*\)\s*\{.*?\n\}", s, re.S)
+    assert sp and "syncImmersiveShell()" in sp.group(0), "showPage must call syncImmersiveShell"
+    assert av and "syncImmersiveShell()" in av.group(0), "applyViewState must call syncImmersiveShell"
+    assert "renderMode: '2d'" not in s
+    assert "state.renderMode = '2d';" not in s
