@@ -11,7 +11,7 @@ const state = {
     visibleCanteens: [],
     pendingCanteens: [],
     campusPresetScale: null,
-    renderMode: '2d',
+    renderMode: '3d',
     lastData: null,
     lastStatistics: null,
     lastSingleConfig: null,
@@ -149,7 +149,7 @@ function syncModeForms() {
     if (singleModeForm) singleModeForm.hidden = isCampus;
     if (campusModeForm) campusModeForm.hidden = !isCampus;
     if (isCampus && !campusPresetPayload && !campusConfigDirty) {
-        loadDefaultCampusPreset().catch(err => console.error(err));
+        loadSingleCanteenPreset().catch(err => console.error(err));
     }
 }
 
@@ -172,8 +172,24 @@ function readCampusConfig() {
     }
 }
 
+// 旧版：保留手工/兜底入口，命中 /campus/presets/default（勿改用途）。
 async function loadDefaultCampusPreset() {
     const res = await fetch(`${API_BASE}/campus/presets/default`);
+    if (!res.ok) throw new Error('校园预设加载失败');
+    const data = await res.json();
+    campusPresetPayload = data.config;
+    applyCampusPresetMetadata(data);
+    if (campusConfigJson) {
+        campusConfigJson.value = JSON.stringify(data.config, null, 2);
+        campusConfigDirty = false;
+    }
+    renderPendingDataNote(data.pending_canteens || []);
+    return data.config;
+}
+
+// 默认入口：单食堂数字孪生预设，命中 /api/campus/presets/single-canteen。
+async function loadSingleCanteenPreset() {
+    const res = await fetch(`${API_BASE}/campus/presets/single-canteen`);
     if (!res.ok) throw new Error('校园预设加载失败');
     const data = await res.json();
     campusPresetPayload = data.config;
@@ -210,7 +226,7 @@ async function getCampusConfigForSubmit() {
     if (campusPresetPayload) {
         return campusPresetPayload;
     }
-    return await loadDefaultCampusPreset();
+    return await loadSingleCanteenPreset();
 }
 
 async function resetActiveSession() {
@@ -340,7 +356,7 @@ function resetSimulationState() {
     state.activeCanteenId = null;
     state.activeFloorId = null;
     state.canteenOrder = [];
-    state.renderMode = '2d';
+    state.renderMode = '3d';
     state.studentPrev = {};
     playPauseBtn.textContent = '暂停';
     document.getElementById('current-time').textContent = '00:00';

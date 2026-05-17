@@ -32,7 +32,7 @@ def test_main_js_state_has_campus_control_fields():
         'visibleCanteens: []',
         'pendingCanteens: []',
         'campusPresetScale: null',
-        "renderMode: '2d'",
+        "renderMode: '3d'",
         'lastStatistics: null',
         'lastSingleConfig: null',
     ):
@@ -137,3 +137,19 @@ def test_main_js_exposes_scenario_helpers_for_contract_testing():
         'window.CanteenApp.showStatistics = showStatistics;',
     ):
         assert snippet in MAIN_JS
+
+
+MAIN = REPO_ROOT / 'frontend' / 'static' / 'js' / 'main.js'
+
+
+def test_preset_first_uses_single_canteen_and_3d_default():
+    s = MAIN.read_text(encoding="utf-8")
+    assert "async function loadSingleCanteenPreset()" in s
+    assert "/api/campus/presets/single-canteen" in s
+    assert "async function loadDefaultCampusPreset()" in s     # legacy retained
+    assert "/campus/presets/default" in s                       # legacy retained
+    assert "renderMode: '3d'" in s
+    assert "state.renderMode = '3d';" in s
+    assert "renderMode: '2d'" not in s
+    assert "state.renderMode = '2d';" not in s
+    assert "canvas_renderer" in s.lower() or "CanvasRenderer" in s
