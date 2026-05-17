@@ -359,6 +359,15 @@ const FLOOR_TABLE_COLOR_FALLBACKS = {
     long: 0x9a6b3e,
     booth: 0xb9804a,
 };
+// Spec §A per-floor stall theme: material/color-temperature only, emissive ≈ 0.
+const STALL_THEME = {
+    1: { sign: 0x8a9aa6, counter: 0x9aa7ad, rail: 0x7d8a90, glass: 0xbcd6db, roughness: 0.40 }, // brushed steel, cool
+    2: { sign: 0xc79a58, counter: 0xb88c4f, rail: 0x8a6537, glass: 0xe8d2a8, roughness: 0.46 }, // warm wood + brass
+    3: { sign: 0x7a5a40, counter: 0x6e553e, rail: 0x4e3b2a, glass: 0x9b7d55, roughness: 0.52 }, // dark wood, warm
+};
+function stallTheme(floorId) {
+    return STALL_THEME[floorId] || STALL_THEME[1];
+}
 const MINGHU_FLOOR_LAYOUTS = {
     1: {
         key: 'basicMealWideAisle',
@@ -1606,6 +1615,41 @@ export class CanteenScene {
         body.castShadow = false;
         body.receiveShadow = false;
 
+        // Spec §A: additive 4-part themed stall layered on top of the retained
+        // window meshes (signboard / open-kitchen glass / base counter / tray
+        // rail + status strip). Material + color temperature only, emissive ≈ 0.
+        const th = stallTheme(floorId);
+        this._box(group, 'stall base counter',
+            [FRONT_WINDOW_COUNTER_SIZE[0] + 1.2, 1.4, FRONT_WINDOW_COUNTER_SIZE[2] + 1.0],
+            [x, y - 0.1, z],
+            this._photoMat(th.counter, {
+                opacity: win.is_open ? 0.92 : 0.7,
+                roughness: th.roughness,
+                emissive: th.counter,
+                emissiveIntensity: win.is_serving ? 0.03 : 0.012,
+            })
+        );
+        this._box(group, 'stall open-kitchen glass',
+            [FRONT_WINDOW_COUNTER_SIZE[0] - 0.6, 2.0, 0.5],
+            [x, y + 5.6, z + FRONT_WINDOW_COUNTER_SIZE[2] / 2 + 0.55],
+            this._photoMat(th.glass, {
+                opacity: 0.34,
+                roughness: th.roughness,
+                emissive: th.glass,
+                emissiveIntensity: win.is_serving ? 0.03 : 0.012,
+            })
+        );
+        this._box(group, 'stall tray rail',
+            [FRONT_WINDOW_COUNTER_SIZE[0] - 1.0, 0.5, 0.6],
+            [x, y + 1.0, z + FRONT_WINDOW_COUNTER_SIZE[2] / 2 + 1.05],
+            this._photoMat(th.rail, {
+                opacity: win.is_open ? 0.9 : 0.66,
+                roughness: th.roughness,
+                emissive: th.rail,
+                emissiveIntensity: win.is_serving ? 0.03 : 0.012,
+            })
+        );
+
         this._box(group, 'glass food guard', FRONT_WINDOW_GLASS_GUARD_SIZE,
             [x, y + 5.6, z + FRONT_WINDOW_COUNTER_SIZE[2] / 2 + 0.2],
             this._photoMat(0xcceaf1, { opacity: 0.36, roughness: 0.08 })
@@ -1622,6 +1666,17 @@ export class CanteenScene {
                 emissiveIntensity: win.is_serving ? 0.035 : 0.015,
             })
         );
+        // Additional thin status strip beside the retained rail, same open/serving/closed logic.
+        this._box(group, 'stall status strip',
+            [FRONT_WINDOW_STATUS_RAIL_SIZE[0] + 4, 0.5, 0.5],
+            [x, y + 7.0, z - FRONT_WINDOW_COUNTER_SIZE[2] / 2 - 0.55],
+            this._photoMat(frontStatusRailColor, {
+                opacity: win.is_open ? 0.5 : 0.32,
+                roughness: th.roughness,
+                emissive: frontStatusRailColor,
+                emissiveIntensity: win.is_serving ? 0.03 : 0.012,
+            })
+        );
         if (win.is_open && win.is_serving) {
             this._box(group, 'front service serving status light', FRONT_WINDOW_SERVING_LIGHT_SIZE,
                 [x, y + 7.2, z - FRONT_WINDOW_COUNTER_SIZE[2] / 2 - 0.7],
@@ -1633,6 +1688,22 @@ export class CanteenScene {
             );
         }
         if (showWindowLabel) {
+            // Thin themed signboard band at label height; the retained menu
+            // board/label renders just in front of it (slightly larger +z).
+            this._box(group, 'stall signboard band',
+                [FRONT_WINDOW_MENU_BOARD_WIDTH + 1.5, FRONT_WINDOW_MENU_BOARD_HEIGHT + 1.2, 0.5],
+                [
+                    x + FRONT_WINDOW_LABEL_X_OFFSET,
+                    y + FRONT_WINDOW_LABEL_Y_OFFSET,
+                    z + FRONT_WINDOW_LABEL_Z_OFFSET - 0.7,
+                ],
+                this._photoMat(th.sign, {
+                    opacity: win.is_open ? 0.94 : 0.72,
+                    roughness: th.roughness,
+                    emissive: th.sign,
+                    emissiveIntensity: win.is_serving ? 0.03 : 0.012,
+                })
+            );
             this._addMenuBoard(
                 group,
                 this._windowLabel(win, floorId, localIndex),
