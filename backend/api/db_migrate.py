@@ -68,4 +68,9 @@ def migrate(db_path: str) -> None:
             PRIMARY KEY (from_code, to_code)
         )""")
 
+        # 幂等加 interventions_json 列到 campus_snapshot
+        if _table_exists(c, "campus_snapshot") and not _column_exists(
+                c, "campus_snapshot", "interventions_json"):
+            c.execute("ALTER TABLE campus_snapshot ADD COLUMN interventions_json TEXT")
+
         conn.commit()

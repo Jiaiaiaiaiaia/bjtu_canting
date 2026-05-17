@@ -103,3 +103,13 @@ def test_migrate_is_idempotent_when_called_twice(tmp_path):
         cols = [r[1] for r in c.execute("PRAGMA table_info(simulation_config)")]
     assert cols.count("mode") == 1
     assert cols.count("campus_config_json") == 1
+
+
+def test_interventions_json_column_idempotent(tmp_path):
+    """campus_snapshot 幂等加 interventions_json 列。"""
+    db = str(tmp_path / "t.db")
+    migrate(db)
+    migrate(db)  # 重入幂等
+    with sqlite3.connect(db) as c:
+        cols = [r[1] for r in c.execute("PRAGMA table_info(campus_snapshot)")]
+    assert "interventions_json" in cols
