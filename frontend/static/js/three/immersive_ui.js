@@ -138,7 +138,7 @@ export class ImmersiveUI {
         resetBtn.addEventListener('click', () => {
             // resetCamera 优先，兜底 resetView
             if (this._sceneApi?.resetCamera) {
-                this._sceneApi.resetCamera();
+                this._sceneApi?.resetCamera?.();
             } else {
                 this._sceneApi?.resetView?.();
             }
