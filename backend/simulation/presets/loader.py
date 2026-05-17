@@ -106,11 +106,13 @@ def load_single_canteen_preset() -> dict:
     # avg_eat_time=15min(900s) 会导致零学生完成，复现/演示与 C1 复现测试均空转。
     # 实测（seed=123）：N=2400+sim=3600 时排队峰值 ≈87（远超 observed_peak_queue=25）、
     # 座位满载，served=2128 名学生在窗口内完成；N≈1800 到达率低于窗口/座位吞吐、
-    # 队列恒为 0、无拥堵叙事。注意：ArrivalGenerator 当前用恒定 λ（未接 arrival_schedule，
-    # 属 D1 范围），故队列在窗口内单调上升、回落发生在到达截止后的 drain 段。
+    # 队列恒为 0、无拥堵叙事。
     cfg["campus"]["simulation_seconds"] = 3600
     cfg["campus"]["total_students"] = 2400
-    # spec §3.5/§5.1：arrival_schedule 仅 trace 路径消费；live 路径 λ(t) 接线见 D1。
+    # spec §3.5/§5.1：D3 已接线 live 路径——ArrivalGenerator 现消费
+    # arrival_schedule，与 trace 共用同一 ArrivalSchedule，产生窗口内
+    # 先升后落的 λ(t)：队列在 ramp/pulse 段攀升，随后在到达仍持续时于
+    # horizon 结束前回落（非到达截止后的 drain）。
     # ramp/pulse 基于下方 sim_s 动态计算，重标定后自动跟随。
     sim_s = float(cfg["campus"]["simulation_seconds"])
     cfg["campus"]["arrival_schedule"] = {

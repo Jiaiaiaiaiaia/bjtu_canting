@@ -122,13 +122,10 @@ class ArrivalGenerator:
             # = 恒定速率(N·α·coverage/T) × 时长，只改时间形状不改总量。
             from .arrival_schedule import ArrivalSchedule
 
-            ramp = schedule.get("ramp")
-            sch = ArrivalSchedule(
+            sch = ArrivalSchedule.from_config(
+                schedule,
                 total_arrivals=rate_per_sec * stop_after,
                 horizon_seconds=stop_after,
-                baseline=schedule.get("baseline", 1.0),
-                ramp=tuple(ramp) if ramp else None,
-                pulses=[tuple(p) for p in schedule.get("pulses", [])],
             )
             last_arrival = 0.0
             for arrival_at in sch.sample_arrivals(self.rng):

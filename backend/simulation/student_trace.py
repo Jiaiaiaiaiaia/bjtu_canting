@@ -31,13 +31,10 @@ def build_single_canteen_traces(config: dict, streams) -> list[StudentTrace]:
         # = 恒定速率 × 时长，仅时间再分布。
         from .arrival_schedule import ArrivalSchedule
 
-        ramp = schedule.get("ramp")
-        sch = ArrivalSchedule(
+        sch = ArrivalSchedule.from_config(
+            schedule,
             total_arrivals=rate_per_sec * stop_after,
             horizon_seconds=stop_after,
-            baseline=schedule.get("baseline", 1.0),
-            ramp=tuple(ramp) if ramp else None,
-            pulses=[tuple(p) for p in schedule.get("pulses", [])],
         )
         return [
             StudentTrace(

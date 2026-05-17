@@ -33,6 +33,21 @@ class ArrivalSchedule:
                   horizon_seconds=horizon_seconds)
         return obj
 
+    @classmethod
+    def from_config(cls, schedule: dict, total_arrivals: float,
+                    horizon_seconds: float):
+        """从 arrival_schedule 配置字典构造，trace 与实时生成器共用，
+        避免两处手工映射漂移（ramp tuple-or-None / pulses list-of-tuples
+        / baseline 默认 1.0 与原构造逐字一致）。"""
+        ramp = schedule.get("ramp")
+        return cls(
+            total_arrivals=total_arrivals,
+            horizon_seconds=horizon_seconds,
+            baseline=schedule.get("baseline", 1.0),
+            ramp=tuple(ramp) if ramp else None,
+            pulses=[tuple(p) for p in schedule.get("pulses", [])],
+        )
+
     def _grid(self):
         n = max(1, int(self.horizon_seconds))
         return range(n)
