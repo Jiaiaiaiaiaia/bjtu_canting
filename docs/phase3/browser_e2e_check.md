@@ -43,3 +43,30 @@ Evidence: `docs/phase3/screenshots/three-result.json` + `twin-*.png` (this run)
 
 ## Open issues
 - None for the checked V7 immersive single-canteen flow. (Headless canvas-raycast remains a harness limitation, documented above; product drill via floorstrip works deterministically.)
+
+---
+
+## 2026-05-18 — Item 1: Floor detail optimization (windows + tables + flow)
+
+Scope: item 1 of the 6-item sequence (windows / tables / crowd-flow), renderer-only.
+Plan `docs/superpowers/plans/2026-05-18-floor-detail-optimization.md`.
+
+Commits (all intact in history):
+- `364ce3e` A1 lock 4-part stall contract (red)
+- `12ab4a7` A2 4-part themed front service stall (additive; hooks/labels/intervention intact) — spec + code-quality two-stage subagent review **passed**
+- `b1e65da` B1 lock regularized table-grid + cue-token contract (red)
+- `332ee3e` B2 floor-3 table-zone buffer satisfies the regularized-grid contract (minimal: f3 `tableZ0` 106→112 in both JS profiles; floors 1/2 already compliant; cue tokens preserved)
+- `ab25bcc` C1 lock student-orientation + in-footprint path contract (red)
+- `3e7d0a9` C2 avatars face travel (`atan2`); C1 corrected to assert the true §C invariant (routed targets reachable in-footprint; side-gate entrance spawn correctly outside the slab, still locked by the existing entry-path/nearest-entrance tests)
+
+Machine verification at HEAD:
+- `node --check` `state_adapter.js` and `canteen_scene.js`: exit 0.
+- Item-1 test bundle `-k "service_stall or side_service_stall or table_blocks_are_regularized or student_paths_avoid or matte or window_labels or front_service or front_window or 1f_layout_sample"`: **19 passed, 0 failed**.
+- The 4 new contract tests (A1 stall, A3 side stall, B1 regularized grid, C1 orientation/path) are green; window/label/matte and `test_minghu_1f_layout_sample_is_dense_and_semantically_truthful` regressions stay green.
+
+Full-suite state (`pytest backend/tests -q`): 10 failed / 350 passed. **All 10 are concurrent non-item-1 work, none attributable to item 1:**
+- 8 contract failures are the parallel item #3/#4 effort (building/camera/axonometric/floor-surface/alpha-flicker/scene-labels/brand): `test_default_twin_view_prioritizes_building_over_empty_ground`, `test_canteen_floor_surfaces_do_not_hide_lower_levels`, `test_focused_canteen_floor_uses_stable_readable_light_surface`, `test_canteen_scene_floor_focus_uses_side_to_top_to_full_floor_sequence`, `test_canteen_scene_focus_hides_large_scene_labels_from_sightline`, `test_canteen_scene_uses_open_axonometric_layered_building_model`, `test_immersive_ui_places_minghu_brand_at_top_left`, `test_canteen_scene_focus_floor_avoids_alpha_flicker_layers`.
+- `test_readme_matches_single_canteen_3d_product_direction` — concurrent CLAUDE.md/README direction rewrite.
+- `test_table_layout_preserves_backend_seats_but_caps_visual_tables` — broken by concurrent commit `8155747 "make all floors rectangular (rearNotchDepth=0 for 2F and 3F)"`, which landed after item-1 C2 and changed floor footprints.
+
+Browser visual capture: **deferred, not faked.** The 3D scene (`canteen_scene.js`) is being concurrently rewritten by the parallel #3/#4 effort (continuous "Style B/C building", wall-height, rectangular-floor commits; the file is currently dirty with their in-progress work). A screenshot now would mix item 1 with their unfinished #3/#4 state and could not isolate item-1's stalls/tables/flow. Recommended: run the per-floor browser pass once #3/#4 settles (or with it paused). No screenshots were captured for this section to avoid misattributed evidence.
