@@ -12,23 +12,27 @@
 // 关窗暗+「关闭中」、空关灰、KPI 青字。THREE 实例由 scene3d 注入（单一
 // importmap 依赖），不在本模块重复 import three。
 
-const FLOOR_GAP = 74;
-const FLOOR_RISE = 34;
-const FOCUS_SLIDE = 520;       // FOCUS 态非焦点层滑开距离
-const CAM_LERP = 0.08;         // 相机/层位移插值系数
+const FLOOR_GAP = 110;          // 增大到 110，三层堆叠清晰可读
+const FLOOR_RISE = 0;           // 层间高差（场景已竖向展开，无需额外偏移）
+const FOCUS_SLIDE = 520;        // FOCUS 态非焦点层滑开距离
+const CAM_LERP = 0.08;          // 相机/层位移插值系数
+
+// 食堂建筑尺寸（world-unit，与现有坐标系匹配）
+const BASE_W = 260;
+const BASE_D = 54;
 
 // 冷青监控调色（与 scene3d / canvas_renderer 图例语义连续）。
 const PALETTE = {
-    deck: 0x26394d,
+    deck: 0x263a50,
     windowOpen: 0xd64a55,
     windowIdle: 0x94a8b5,
-    windowClosing: 0x3f5168,    // 关窗暗
+    windowClosing: 0x3f5168,     // 关窗暗
     windowClosedEmpty: 0x55636f, // 空关灰
     seatOccupied: 0xe7bd63,
     seatEmpty: 0x77d993,
     studentQueue: 0x9333ea,
     studentMove: 0x52d6d1,
-    flow: 0x2dd4bf,             // 发光流线青
+    flow: 0x2dd4bf,              // 发光流线青
     label: '#eef6f4',
     labelKpi: '#2dd4bf',
 };
@@ -61,9 +65,13 @@ export class CanteenScene {
         this._floorSlide = new Map();  // floorId -> 当前插值位移
         this._floorCount = 0;
 
+        // 剖切/热力模式（与 immersive_ui 绑定时赋值，默认剖切展示）
+        this.cutaway = true;
+        this.heatMode = false;
+
         // 相机目标（插值逼近，离散切换→平滑飞入）
-        this._camTarget = { pos: new THREE.Vector3(260, 260, 520),
-                            look: new THREE.Vector3(160, 0, 120) };
+        this._camTarget = { pos: new THREE.Vector3(160, 260, 560),
+                            look: new THREE.Vector3(160, 80, 60) };
         this._lastFrame = null;
     }
 
@@ -96,12 +104,19 @@ export class CanteenScene {
         this.trackedStudentId = studentId == null ? null : String(studentId);
     }
 
-    // 每帧调用：重建内容（位置已由 state_adapter 插值）+ 推进相机/层动画。
+    // 快照到达时调用（data-rebuild path）：重建几何体 + 重算相机目标。
+    // RAF 路径的动画推进由 tick() 完成，update() 不再调用 _animateFloors/_animateCamera。
     update(frame) {
         this._lastFrame = frame;
         this._floorCount = frame ? frame.floors.length : 0;
         this._rebuild(frame);
         this._recomputeCameraTarget();
+    }
+
+    // RAF 每帧调用（scene3d.animate() 调用）：仅推进插值动画，不重建几何。
+    // First-frame safety: 快照到达前 tick 空转，不访问未初始化的 floorGroups。
+    tick() {
+        if (!this._lastFrame || this._floorGroups.size === 0) return;
         this._animateFloors();
         this._animateCamera();
     }
@@ -127,31 +142,37 @@ export class CanteenScene {
         this._floorGroups.clear();
     }
 
-    _mat(color, opacity) {
+    _mat(color, opacity, emissive, emissiveIntensity) {
         return new this.THREE.MeshStandardMaterial({
             color,
             roughness: 0.72,
             metalness: 0.04,
             transparent: opacity != null,
             opacity: opacity == null ? 1 : opacity,
+            emissive: emissive != null ? emissive : 0x000000,
+            emissiveIntensity: emissiveIntensity != null ? emissiveIntensity : 0,
         });
     }
 
-    _label(text, x, y, z, color) {
+    _label(text, x, y, z, color, opacity) {
         const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 64;
+        canvas.width = 320;
+        canvas.height = 72;
         const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'rgba(7,17,29,0.76)';
+        ctx.roundRect?.(4, 4, 312, 64, 10);
+        ctx.fill?.();
         ctx.fillStyle = color || PALETTE.label;
-        ctx.font = '24px sans-serif';
+        ctx.font = 'bold 26px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(text, 128, 38);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 160, 38);
         const texture = new this.THREE.CanvasTexture(canvas);
-        const sprite = new this.THREE.Sprite(
-            new this.THREE.SpriteMaterial({ map: texture, transparent: true })
-        );
+        const mat = new this.THREE.SpriteMaterial({ map: texture, transparent: true });
+        if (opacity != null) mat.opacity = opacity;
+        const sprite = new this.THREE.Sprite(mat);
         sprite.position.set(x, y, z);
-        sprite.scale.set(80, 20, 1);
+        sprite.scale.set(90, 22, 1);
         return sprite;
     }
 
@@ -160,50 +181,149 @@ export class CanteenScene {
         this._clear();
         if (!frame) return;
 
-        this.group.add(this._label(frame.displayName || '食堂', 160, 70, -40,
+        // ---- Site plinth（深青大底座，V7 visual identity）----
+        const totalSpan = Math.max(1, frame.floors.length) * FLOOR_GAP;
+        const plinth = new THREE.Mesh(
+            new THREE.BoxGeometry(BASE_W + 28, 6, BASE_D + 24),
+            this._mat(0x13243a, undefined, undefined, undefined)
+        );
+        plinth.position.set(160, -3, BASE_D / 2);
+        this.group.add(plinth);
+
+        // 食堂名标签
+        this.group.add(this._label(frame.displayName || '食堂', 160, totalSpan + 30, -20,
             PALETTE.labelKpi));
+
+        // ---- Vertical stair core（跨所有楼层的垂直交通核，V7 stairCore）----
+        const stairHeight = totalSpan + 10;
+        const stairCore = new THREE.Mesh(
+            new THREE.BoxGeometry(14, stairHeight, 14),
+            this._mat(0x52d6d1, 0.65, 0x52d6d1, 0.18)
+        );
+        stairCore.position.set(160 - BASE_W / 2 + 18, stairHeight / 2 - 3, BASE_D / 2 - 14);
+        stairCore.userData = { kind: 'stairCore' };
+        this.group.add(stairCore);
+
+        // 入口标记
+        const entrance = new THREE.Mesh(
+            new THREE.BoxGeometry(20, 7, 10),
+            this._mat(0x52d6d1, undefined, 0x52d6d1, 0.32)
+        );
+        entrance.position.set(160 - BASE_W / 2 + 28, 4, BASE_D - 6);
+        this.group.add(entrance);
 
         frame.floors.forEach(floor => {
             const fg = new THREE.Group();
             fg.userData = { floorId: floor.floor_id, kind: 'floor' };
             this._floorGroups.set(floor.floor_id, fg);
 
-            const deck = new THREE.Mesh(
-                new THREE.BoxGeometry(260, 4, 54),
-                this._mat(PALETTE.deck)
-            );
-            deck.position.set(160, floor.baseY, floor.z);
-            deck.userData = { floorId: floor.floor_id, kind: 'floor' };
-            fg.add(deck);
+            // 楼层基准 Y（frame 给的 baseY 已带 index*FLOOR_GAP 偏移）
+            const baseY = floor.baseY;
+            const fz = BASE_D / 2;  // 使用固定中心 Z，不依赖 frame.z（坐标系一致）
 
-            // 楼层角标（FOCUS 时叠加焦点标注）
-            const tag = this._label(
-                `${floor.floor_id}F${this.focusFloorId === floor.floor_id ? ' ◀ 焦点' : ''}`,
-                20, floor.baseY + 8, floor.z, PALETTE.labelKpi
+            // ---- 楼板 slab（交替色 + 热力模式）----
+            const slabBaseColor = floor.index % 2 ? 0x243f56 : 0x263a50;
+            // heatColor 用于热力模式时楼板着色（利用最大队列饱和度）
+            const maxSat = floor.windows.length > 0
+                ? Math.min(1, Math.max(...floor.windows.map(w => (w.queue_length || 0) / 12)))
+                : 0;
+            const hc = heatColor(THREE, maxSat);
+            const slabColor = this.heatMode ? hc.getHex() : slabBaseColor;
+            const slab = new THREE.Mesh(
+                new THREE.BoxGeometry(BASE_W, 5, BASE_D),
+                this.heatMode
+                    ? new THREE.MeshStandardMaterial({
+                        color: slabColor, roughness: 0.72,
+                        emissive: slabColor, emissiveIntensity: 0.18,
+                    })
+                    : this._mat(slabColor)
             );
-            fg.add(tag);
+            slab.position.set(160, baseY, fz);
+            slab.userData = { floorId: floor.floor_id, kind: 'floor' };
+            fg.add(slab);
 
-            // 窗口：开放亮 / closing 暗+「关闭中」/ 空关灰；队列饱和度上色顶盖
+            // ---- front glass curtain wall（剖切时不建正面，让内部可见）----
+            // cutaway 为 true 时省略正面玻璃幕墙，interior 全可见
+            if (!this.cutaway) {
+                const frontGlass = new THREE.Mesh(
+                    new THREE.BoxGeometry(BASE_W, 26, 2),
+                    this._mat(0xbdebf2, 0.20)
+                );
+                frontGlass.name = 'front glass';
+                frontGlass.position.set(160, baseY + 14, BASE_D - 1);
+                fg.add(frontGlass);
+            }
+
+            // 后墙 + 侧墙（半透明）
+            const backWall = new THREE.Mesh(
+                new THREE.BoxGeometry(BASE_W, 26, 2),
+                this._mat(0xbdebf2, 0.15)
+            );
+            backWall.position.set(160, baseY + 14, 1);
+            fg.add(backWall);
+
+            const leftWall = new THREE.Mesh(
+                new THREE.BoxGeometry(2, 26, BASE_D),
+                this._mat(0xbdebf2, 0.10)
+            );
+            leftWall.position.set(160 - BASE_W / 2, baseY + 14, fz);
+            fg.add(leftWall);
+
+            const rightWall = new THREE.Mesh(
+                new THREE.BoxGeometry(2, 26, BASE_D),
+                this._mat(0xbdebf2, 0.10)
+            );
+            rightWall.position.set(160 + BASE_W / 2, baseY + 14, fz);
+            fg.add(rightWall);
+
+            // ---- 楼层标签 sprite（非焦点层降透明度）----
+            const isFocused = this.mode === 'overview' || this.focusFloorId === floor.floor_id;
+            const labelText = `${floor.floor_id} · ${floor.windows.length}窗 · ${floor.seats.length}座`;
+            const labelOp = isFocused ? 1.0 : 0.35;
+            const lbl = this._label(
+                labelText,
+                160 - BASE_W / 2 + 50, baseY + 22, -10,
+                isFocused ? PALETTE.labelKpi : PALETTE.label,
+                labelOp
+            );
+            fg.add(lbl);
+
+            // 焦点角标
+            if (this.mode === 'focus' && this.focusFloorId === floor.floor_id) {
+                const fTag = this._label(
+                    `${floor.floor_id}F ◀ 焦点`, 160, baseY + 38, -30,
+                    PALETTE.labelKpi, 1.0
+                );
+                fg.add(fTag);
+            }
+
+            // ---- 窗口（保持 userData.kind='window' 供 raycaster drill-down）----
             floor.windows.forEach(win => {
-                let color = PALETTE.windowIdle;
-                if (win.is_open) color = win.is_serving ? PALETTE.windowOpen : PALETTE.windowIdle;
-                else color = win.closing ? PALETTE.windowClosing : PALETTE.windowClosedEmpty;
+                // is_open + is_serving → 红；is_open → teal idle；!is_open → dim
+                let winColor = PALETTE.windowIdle;
+                if (win.is_open) {
+                    winColor = win.is_serving ? PALETTE.windowOpen : 0x2dd4bf;
+                } else {
+                    winColor = win.closing ? PALETTE.windowClosing : PALETTE.windowClosedEmpty;
+                }
                 const stall = new THREE.Mesh(
                     new THREE.BoxGeometry(18, 20, 18),
-                    this._mat(color, win.is_open ? undefined : 0.78)
+                    this._mat(winColor, win.is_open ? undefined : 0.78)
                 );
                 stall.position.set(win.position.x, win.position.y, win.position.z);
                 stall.userData = { floorId: floor.floor_id, kind: 'window',
                                    windowId: win.id };
                 fg.add(stall);
 
+                // 队列热力顶盖（用 heatColor）
                 const sat = Math.min(1, (win.queue_length || 0) / 12);
                 if (win.is_open && sat > 0) {
+                    const hc2 = heatColor(THREE, sat);
                     const cap = new THREE.Mesh(
                         new THREE.BoxGeometry(18, 2.4, 18),
                         new THREE.MeshStandardMaterial({
-                            color: heatColor(THREE, sat),
-                            emissive: heatColor(THREE, sat),
+                            color: hc2,
+                            emissive: hc2,
                             emissiveIntensity: 0.45,
                         })
                     );
@@ -216,6 +336,7 @@ export class CanteenScene {
                 }
             });
 
+            // ---- 座位（保持 userData 兼容）----
             floor.seats.forEach(seat => {
                 const seatMesh = new THREE.Mesh(
                     new THREE.BoxGeometry(8, 4, 8),
@@ -226,6 +347,7 @@ export class CanteenScene {
                 fg.add(seatMesh);
             });
 
+            // ---- 学生/队列点（userData.kind='student' 供 raycaster）----
             floor.students.forEach(student => {
                 const p = student.position3d || student.target;
                 const isTracked = this.trackedStudentId != null
@@ -247,7 +369,7 @@ export class CanteenScene {
                 fg.add(dot);
             });
 
-            // 焦点层：到达→窗口→座位→离场 发光路径高亮
+            // ---- 焦点层：发光流线路径（_flowPath 复用，绑定到新材质）----
             if (this.mode === 'focus' && this.focusFloorId === floor.floor_id) {
                 fg.add(this._flowPath(floor));
             }
@@ -259,11 +381,12 @@ export class CanteenScene {
     // 发光流线：到达点 → 窗口排 → 座位区 → 离场，冷青发光（spec §4.1 人流分析）。
     _flowPath(floor) {
         const THREE = this.THREE;
+        const baseY = floor.baseY;
         const pts = [
-            new THREE.Vector3(160, floor.baseY + 13, floor.z + 70),  // 到达
-            new THREE.Vector3(78, floor.baseY + 14, floor.z - 6),    // 窗口
-            new THREE.Vector3(120, floor.baseY + 9, floor.z + 24),   // 座位
-            new THREE.Vector3(250, floor.baseY + 13, floor.z + 70),  // 离场
+            new THREE.Vector3(160, baseY + 13, BASE_D + 20),  // 到达
+            new THREE.Vector3(160 - BASE_W / 4, baseY + 14, BASE_D / 4),  // 窗口
+            new THREE.Vector3(160, baseY + 9, BASE_D / 2),                // 座位
+            new THREE.Vector3(160 + BASE_W / 4, baseY + 13, BASE_D + 20), // 离场
         ];
         const curve = new THREE.CatmullRomCurve3(pts);
         const geo = new THREE.TubeGeometry(curve, 48, 1.4, 8, false);
@@ -283,15 +406,15 @@ export class CanteenScene {
         const THREE = this.THREE;
         if (this.mode === 'focus' && this.focusFloorId != null) {
             const idx = this._floorIndex(this.focusFloorId);
-            const z = idx * FLOOR_GAP;
-            const y = idx * FLOOR_RISE;
-            this._camTarget.pos.set(160, y + 120, z + 260);
-            this._camTarget.look.set(160, y + 8, z);
+            const y = idx * FLOOR_GAP;
+            this._camTarget.pos.set(160, y + 160, y + 340);
+            this._camTarget.look.set(160, y + 10, BASE_D / 2);
         } else {
-            // A 总览：斜俯环绕整栋堆叠
+            // A 总览：斜俯环绕整栋堆叠，视野覆盖所有楼层
             const span = Math.max(1, this._floorCount - 1) * FLOOR_GAP;
-            this._camTarget.pos.set(260, 260, span + 520);
-            this._camTarget.look.set(160, 0, span / 2 + 60);
+            const centerY = span / 2;
+            this._camTarget.pos.set(300, centerY + 280, span + 420);
+            this._camTarget.look.set(160, centerY, BASE_D / 2);
         }
     }
 
@@ -301,7 +424,7 @@ export class CanteenScene {
         return f ? f.index : 0;
     }
 
-    // 非焦点层滑开收起（方案 2）。
+    // 非焦点层滑开收起（方案 2，保持 userData.kind 与 slide 语义不变）。
     _animateFloors() {
         this._floorGroups.forEach((fg, floorId) => {
             let targetSlide = 0;

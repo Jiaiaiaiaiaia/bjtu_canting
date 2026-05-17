@@ -171,7 +171,7 @@ function animate() {
     // 单食堂 FOCUS/总览相机与楼层滑开动画由 CanteenScene 推进（位置已由
     // StateAdapter 插值，这里只推进相机/层位移逼近）。
     if (canteenScene && lastAppState?.view === 'canteen') {
-        canteenScene.update(canteenScene.lastFrame);
+        canteenScene.tick();
     }
     if (controls) controls.update();
     sceneFX ? sceneFX.render() : renderer.render(scene, camera);

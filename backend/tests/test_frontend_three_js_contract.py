@@ -73,3 +73,34 @@ def test_scene3d_fx_and_raf_decouple_contract():
     # scene_fx 接入（本任务只接 composer/灯光雾；不动 animate 的 update→tick）
     assert "import { SceneFX } from './scene_fx.js'" in s
     assert "sceneFX" in s
+
+
+def test_canteen_scene_split_and_v7_geometry():
+    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    import re
+    assert "tick(" in s, "missing tick() (RAF advance entry)"
+    assert "update(frame)" in s.replace(" ", "") or "update(frame)" in s
+    assert "_rebuild(" in s
+
+    # Indentation-robust: slice a class method body from its signature up to the
+    # NEXT class-method declaration (4-space-indented `name(...) {`) or EOF.
+    def method_body(src, name):
+        m = re.search(r"\n\s*" + re.escape(name) + r"\s*\([^)]*\)\s*\{", src)
+        if not m:
+            return None
+        start = m.end()
+        nxt = re.search(r"\n {4}[A-Za-z_]\w*\s*\([^)]*\)\s*\{", src[start:])
+        return src[start: start + (nxt.start() if nxt else len(src) - start)]
+
+    tb = method_body(s, "tick")
+    ub = method_body(s, "update")
+    assert tb is not None and "_rebuild(" not in tb, "tick() must NOT _rebuild() (RAF path)"
+    assert ub is not None and "_rebuild(" in ub, "update(frame) must _rebuild() on snapshot"
+    for tok in ("plinth", "glass", "stairCore", "cutaway", "heatColor"):
+        assert tok in s, f"missing V7 token: {tok!r}"
+    s3 = (THREE_DIR / "scene3d.js").read_text(encoding="utf-8")
+    ma = re.search(r"function animate\(\)\s*\{.*?\n\}", s3, re.S)
+    assert ma, "scene3d animate() not found"
+    assert "canteenScene.tick(" in ma.group(0), "animate() must call canteenScene.tick() after V4"
+    assert "canteenScene.update(" not in ma.group(0), \
+        "animate() must NOT call canteenScene.update() (per-RAF rebuild removed)"
