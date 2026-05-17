@@ -8,7 +8,10 @@ from flask import Blueprint, jsonify, request
 
 import api.routes as single_routes
 from simulation.coordinator import CampusCoordinator
-from simulation.presets.loader import load_default_campus_preset
+from simulation.presets.loader import (
+    load_default_campus_preset,
+    load_single_canteen_preset,
+)
 from simulation.random_streams import build_random_streams
 
 
@@ -111,6 +114,7 @@ def _compact_snapshot(state: dict, event_type: str) -> dict:
         'campus_totals': state['campus_totals'],
         'canteens': state['canteens'],
         'in_transit': state['in_transit'],
+        'interventions': state.get('interventions', []),
         'event_type': event_type,
     }
 
@@ -130,8 +134,8 @@ def _flush_campus_snapshots():
         conn.executemany(
             '''INSERT INTO campus_snapshot
                (config_id, current_time, campus_totals_json, canteens_json,
-                in_transit_json, event_type)
-               VALUES (?, ?, ?, ?, ?, ?)''',
+                in_transit_json, interventions_json, event_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
             [
                 (
                     s['config_id'],
@@ -139,6 +143,7 @@ def _flush_campus_snapshots():
                     json.dumps(s['campus_totals'], ensure_ascii=False),
                     json.dumps(s['canteens'], ensure_ascii=False),
                     json.dumps(s['in_transit'], ensure_ascii=False),
+                    json.dumps(s.get('interventions', []), ensure_ascii=False),
                     s['event_type'],
                 )
                 for s in campus_snapshots
@@ -151,7 +156,7 @@ def _flush_campus_snapshots():
 def _load_campus_history_rows(config_id: int | None = None) -> list[dict]:
     query = '''SELECT s.id, s.config_id, s.current_time AS current_time,
                       s.campus_totals_json, s.canteens_json,
-                      s.in_transit_json, s.event_type
+                      s.in_transit_json, s.interventions_json, s.event_type
                FROM campus_snapshot s'''
     params = ()
     if config_id is not None:
@@ -169,6 +174,7 @@ def _load_campus_history_rows(config_id: int | None = None) -> list[dict]:
         item['campus_totals'] = json.loads(item.pop('campus_totals_json') or '{}')
         item['canteens'] = json.loads(item.pop('canteens_json') or '{}')
         item['in_transit'] = json.loads(item.pop('in_transit_json') or '[]')
+        item['interventions'] = json.loads(item.pop('interventions_json') or '[]')
         history.append(item)
     return history
 
@@ -329,6 +335,19 @@ def default_campus_preset():
     })
 
 
+@campus_bp.get('/presets/single-canteen')
+def single_canteen_preset():
+    preset = load_single_canteen_preset()
+    return jsonify({
+        'mode': 'campus',
+        'config': preset['config'],
+        'visible_canteens': preset['visible_canteens'],
+        'pending_canteens': preset['pending_canteens'],
+        'source_scale': preset['source_scale'],
+        'demo_runtime': preset['demo_runtime'],
+    })
+
+
 @campus_bp.post('/config')
 def submit_campus_config():
     if _session().get('mode') not in (None, 'campus'):
@@ -408,6 +427,19 @@ def step_campus_simulation():
         _session()['is_running'] = False
     if _campus_buffer_count() >= STEP_FLUSH_THRESHOLD or state['is_ended']:
         _flush_campus_snapshots()
+    return jsonify(state)
+
+
+@campus_bp.post('/canteens/<cid>/windows/<int:wid>/toggle')
+def toggle_window(cid, wid):
+    coordinator, error = _ensure_campus_initialized()
+    if error is not None:
+        return error
+    open_ = bool((request.get_json(silent=True) or {}).get('open', True))
+    coordinator.toggle_window(cid, wid, open=open_)
+    state = _snapshot('intervention')
+    _session()['snapshot_buffer'].append(_compact_snapshot(state, 'intervention'))
+    _flush_campus_snapshots()       # 立即落库，保证 history 即时可查
     return jsonify(state)
 
 

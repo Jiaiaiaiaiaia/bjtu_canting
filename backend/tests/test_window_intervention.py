@@ -1,5 +1,10 @@
+import random
+
 import simpy
 from simulation.canteen import Canteen
+from simulation.coordinator import CampusCoordinator
+from simulation.presets.loader import load_single_canteen_preset
+from simulation.random_streams import build_random_streams
 
 DEF = {"id": "c", "display_name": "C", "campus_position": {"x":0,"y":0},
        "avg_serve_time_seconds": 10, "avg_eat_time_minutes": 5,
@@ -28,12 +33,6 @@ def test_shortest_window_only_open():
 def test_open_window_capacity_score_excludes_closed():
     c = _canteen()
     assert abs(c.open_window_capacity_score - 3 * (1/10)) < 1e-9
-
-
-import random
-from simulation.coordinator import CampusCoordinator
-from simulation.presets.loader import load_single_canteen_preset
-from simulation.random_streams import build_random_streams
 
 
 def _coord():

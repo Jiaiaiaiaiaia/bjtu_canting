@@ -79,6 +79,7 @@ class CampusCoordinator:
         self.total_served += 1
 
     def toggle_window(self, canteen_id: str, window_id: int, open: bool) -> dict:
+        """运行时开关窗口；只改 is_open（drain 不迁移），追加并返回干预事件 dict。"""
         c = self.canteens[canteen_id]
         w = next((w for w in c.windows if w.id == window_id), None)
         if w is None:
@@ -86,18 +87,21 @@ class CampusCoordinator:
                   "floor_id": None, "window_id": window_id,
                   "action": "open" if open else "close",
                   "status": "rejected", "reason": "unknown window"}
-            self.interventions.append(ev); return ev
+            self.interventions.append(ev)
+            return ev
         if not open and w.is_open and c.open_window_count <= 1:
             ev = {"time": self.env.now, "canteen_id": canteen_id,
                   "floor_id": w.floor_id, "window_id": window_id,
                   "action": "close", "status": "rejected",
                   "reason": "cannot close last open window"}
-            self.interventions.append(ev); return ev
+            self.interventions.append(ev)
+            return ev
         w.is_open = bool(open)   # idempotent: 同态重复无副作用
         ev = {"time": self.env.now, "canteen_id": canteen_id,
               "floor_id": w.floor_id, "window_id": window_id,
               "action": "open" if open else "close", "status": "applied"}
-        self.interventions.append(ev); return ev
+        self.interventions.append(ev)
+        return ev
 
     def advance(self, display_tick_seconds: float):
         """推进仿真时间。前端 /api/campus/step 按展示时间片调用。"""
