@@ -123,3 +123,17 @@ def test_immersive_ui_module_contract():
                 "twin-status", "data-render", "data-page"):
         assert tok in s, f"immersive_ui missing {tok!r}"
     assert "mount(" in s and "dispose(" in s
+
+
+def test_index_loads_new_three_modules_and_scene3d_wires_immersive():
+    html = (Path(__file__).resolve().parents[2] / "frontend/templates/index.html").read_text(encoding="utf-8")
+    assert "js/three/scene_fx.js" in html
+    assert "js/three/immersive_ui.js" in html
+    import re
+    s = (THREE_DIR / "scene3d.js").read_text(encoding="utf-8")
+    assert "ImmersiveUI" in s and "immersiveUI" in s
+    # frame 仅在 renderCanteen() 内由 stateAdapter.buildFrame() 产生 →
+    # immersiveUI.update(frame, ...) 必须在 renderCanteen() 内调用，不能在 render()
+    rc = re.search(r"function renderCanteen\([^)]*\)\s*\{.*?\n\}", s, re.S)
+    assert rc and "immersiveUI.update(" in rc.group(0), \
+        "immersiveUI.update(frame, sceneApi) must be inside renderCanteen() (frame scope)"

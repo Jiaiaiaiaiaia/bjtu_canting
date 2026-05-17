@@ -19,6 +19,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SceneFX } from './scene_fx.js';
+import { ImmersiveUI } from './immersive_ui.js';
 import { StateAdapter } from './state_adapter.js';
 import { CanteenScene } from './canteen_scene.js';
 import { InterventionUI } from './intervention_ui.js';
@@ -26,6 +27,8 @@ import { InterventionUI } from './intervention_ui.js';
 let containerEl = null;
 let renderer = null;
 let sceneFX = null;
+let immersiveUI = null;
+let sceneApi = null;
 let scene = null;
 let camera = null;
 let controls = null;
@@ -123,6 +126,24 @@ function init(container) {
 
     sceneFX = new SceneFX();
     sceneFX.mount(renderer, scene, camera);
+
+    immersiveUI = new ImmersiveUI();
+    immersiveUI.mount(container);
+    sceneApi = {
+        focusFloor(id) { canteenScene?.focusFloor?.(id); },
+        resetView()    { canteenScene?.resetView?.(); },
+        resetCamera()  { canteenScene?.resetView?.(); },
+        setCutaway(b)  {
+            if (!canteenScene) return;
+            canteenScene.cutaway = !!b;
+            if (canteenScene.lastFrame) canteenScene.update(canteenScene.lastFrame);
+        },
+        setHeat(b)     {
+            if (!canteenScene) return;
+            canteenScene.heatMode = !!b;
+            if (canteenScene.lastFrame) canteenScene.update(canteenScene.lastFrame);
+        },
+    };
 
     resize();
     animate();
@@ -306,6 +327,7 @@ function renderCanteen(snapshot, appState) {
     const frame = stateAdapter.buildFrame(snapshot, appState || {});
     if (!frame) return;
     canteenScene.update(frame);
+    if (immersiveUI) immersiveUI.update(frame, sceneApi);
     if (interventionUI) {
         interventionUI.render(frame, canteenScene.mode, canteenScene.focusFloorId);
     }
@@ -327,11 +349,13 @@ function render(snapshot, appState) {
         clearContent();
         if (canteenScene) canteenScene.clearScene();
         renderCampus(snapshot, appState || {});
+        immersiveUI?.update?.(null, sceneApi);
     }
     resize();
 }
 
 function dispose() {
+    immersiveUI?.dispose?.(); immersiveUI = null;
     if (interventionUI) interventionUI.dispose();
     if (canteenScene) canteenScene.dispose();
     if (renderer) {
@@ -349,6 +373,7 @@ function dispose() {
     interventionUI = null;
     raycaster = null;
     lastAppState = null;
+    sceneApi = null;
     if (sceneFX) { sceneFX.dispose(); sceneFX = null; }
 }
 
