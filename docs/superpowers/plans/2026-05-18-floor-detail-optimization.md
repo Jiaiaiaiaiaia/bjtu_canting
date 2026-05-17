@@ -33,8 +33,8 @@
   - `_studentAvatar` (~1904+): orient moving avatars along travel direction.
   - Mirror any `MINGHU_FLOOR_LAYOUTS` block-parameter changes from the adapter.
 - Modify: `frontend/static/js/three/state_adapter.js`
-  - `tableBlockPosition` (~212–237) and `MINGHU_FLOOR_LAYOUTS` block params (~58–216): regularize even grid + clearances.
-  - Path waypoint generation (the function that emits per-student `path`/`position3d` used by `buildFrame`): keep waypoints inside `footprint` and out of table-block AABBs.
+  - `tableBlockPosition` (~553–578) and `MINGHU_FLOOR_LAYOUTS` block params (~58–216): regularize even grid + clearances.
+  - `placeStudentTarget` (~883+) / the `position3d` assignment (~991): keep generated student `target`/`position3d` waypoints inside `footprint` and out of table-block AABBs. (`buildFrame` emits no per-student `path` field — only `target`/`position3d`/`entry3d`; do not assume one.)
 - Modify: `backend/tests/test_frontend_three_js_contract.py` — add focused tests (Tasks A1, B1, C1). No deletion or weakening of existing assertions.
 
 ---
@@ -332,11 +332,11 @@ git commit -m "test(3d): lock regularized table-grid + cue-token contract (red)"
 ### Task B2: Regularize block positioning + re-emit cue tokens
 
 **Files:**
-- Modify: `frontend/static/js/three/state_adapter.js` (`tableBlockPosition` ~212–237; `MINGHU_FLOOR_LAYOUTS` block params ~58–216)
+- Modify: `frontend/static/js/three/state_adapter.js` (`tableBlockPosition` ~553–578; `MINGHU_FLOOR_LAYOUTS` block params ~58–216)
 - Modify: `frontend/static/js/three/canteen_scene.js` (mirror block params; `_addFloorIdentityCues` ~1811+ re-emit cue tokens)
 - Test: `backend/tests/test_frontend_three_js_contract.py`
 
-- [ ] **Step 1: Regularize `tableBlockPosition`** (state_adapter.js ~212–237). The function already computes a clean `col/row` grid from `block.cols`, `block.dx`, `block.dz` and clamps to footprint. Make spacing uniform and the buffer explicit:
+- [ ] **Step 1: Regularize `tableBlockPosition`** (state_adapter.js ~553–578). The function already computes a clean `col/row` grid from `block.cols`, `block.dx`, `block.dz` and clamps to footprint. Make spacing uniform and the buffer explicit:
   - Ensure the per-block `z` origin starts at `tableZoneStartZ(profile)` plus `block.z` with **no** profile-level `tableRowStagger` applied to seats (set `tableRowStagger: 0` in any profile that still uses it, or stop reading it here) so rows are evenly stepped by a single `dz`.
   - Keep the `Math.max(footprint.minX+28, Math.min(footprint.maxX-28, x))` clamp; verify each block's `cols`, `dx`, `dz`, `left/right/offsetX`, and `z` keep the whole block inside `[minX, maxX] × [tableZoneStartZ, footprint.maxZ-28]` for the seat counts used in the B1 test (1F 172, 2F 232, 3F 208).
   - Adjust only block parameters in `MINGHU_FLOOR_LAYOUTS` (counts/cols/dx/dz/anchor/offset/z) so each floor forms aligned rows with a readable central main-aisle gap and a queue→table buffer; keep the three floors' block composition distinct (1F four-seat squares; 2F large central island + side banks; 3F wall-booth run + central small-group + long-table run + window booths). Do not rename block `id`s or change `profile.key`.
@@ -384,9 +384,11 @@ git commit -m "feat(3d): regularize table blocks into aligned grids; cue tokens 
 ```python
 def test_student_paths_avoid_furniture_and_avatars_face_travel():
     scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
-    # avatar orients along travel direction
-    assert "lookAt(" in scene or "rotation.y" in scene
     assert "studentAvatar" in scene
+    # avatar orients along travel direction — assert avatar-SCOPED so the red is
+    # meaningful (unrelated rotation.y/lookAt elsewhere must not satisfy it).
+    avatar_src = scene.split("_studentAvatar(", 1)[1][:4000]
+    assert "atan2" in avatar_src, "avatar must derive facing via Math.atan2(dx,dz)"
 
     script = textwrap.dedent(
         """
