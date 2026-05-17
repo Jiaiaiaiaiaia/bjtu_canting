@@ -3126,3 +3126,12 @@ def test_service_stall_is_four_part_with_per_floor_theme():
     for forbidden in ("f1-added-window", "f1-fake-window",
                       "addedWindowCount", "fabricatedWindow"):
         assert forbidden not in scene
+
+
+def test_side_service_stall_shares_four_part_structure():
+    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    left = scene.split("if (layoutSide === 'left')", 1)[1].split("return;", 1)[0]
+    for tok in ("stall signboard band", "stall open-kitchen glass",
+                "stall base counter", "stall status strip"):
+        assert tok in left, f"side stall missing {tok!r}"
+    assert "kind: 'window'" in left

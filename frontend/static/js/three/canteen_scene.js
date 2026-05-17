@@ -722,7 +722,7 @@ export class CanteenScene {
             color,
             transparent: opacity < 0.98,
             opacity,
-            depthWrite: opacity >= 0.98,
+            depthWrite: true,
             depthTest: true,
             toneMapped: false,
         });
@@ -794,7 +794,7 @@ export class CanteenScene {
         // floor surface must not hide lower levels in overview, while focused
         // single-floor mode uses an opaque slab to avoid transparent alpha shimmer.
         mesh.material.transparent = mesh.material.opacity < 0.98;
-        mesh.material.depthWrite = mesh.material.opacity >= 0.98;
+        mesh.material.depthWrite = true;
         mesh.material.needsUpdate = true;
         mesh.renderOrder = FLOOR_SLAB_RENDER_ORDER;
         // transparent floor surfaces should not receive shadow-map stripes.
@@ -1560,8 +1560,60 @@ export class CanteenScene {
                     emissiveIntensity: win.is_open ? 0.04 : 0.01,
                 })
             );
+
+            // Spec §A: additive 4-part themed stall mirrored onto the side-wall
+            // orientation (service face along +x, stall spans z). Layered on top
+            // of the retained side meshes; material/color temperature only.
+            const sth = stallTheme(floorId);
+            this._box(group, 'stall base counter',
+                [13.2, 1.4, 19.2],
+                [x, y - 7.4, z],
+                this._photoMat(sth.counter, {
+                    opacity: win.is_open ? 0.92 : 0.7,
+                    roughness: sth.roughness,
+                    emissive: sth.counter,
+                    emissiveIntensity: win.is_serving ? 0.03 : 0.012,
+                })
+            );
+            // Thin themed glass pushed clear of the retained 'glass food guard'
+            // (which sits at x + 5.7); placed further out so the two
+            // semi-transparent passes never overlap.
+            this._box(group, 'stall open-kitchen glass',
+                [0.5, 2.0, 16.0],
+                [x + 6.6, y + 5.6, z],
+                this._photoMat(sth.glass, {
+                    opacity: 0.34,
+                    roughness: sth.roughness,
+                    emissive: sth.glass,
+                    emissiveIntensity: win.is_serving ? 0.03 : 0.012,
+                })
+            );
+            // Thin themed status strip stacked above the retained menu fascia
+            // (which sits at x - 5.9), same open/serving/closed color logic.
+            this._box(group, 'stall status strip',
+                [0.5, 0.5, 22.0],
+                [x - 5.9, y + 11.6, z],
+                this._photoMat(winColor, {
+                    opacity: win.is_open ? 0.5 : 0.32,
+                    roughness: sth.roughness,
+                    emissive: winColor,
+                    emissiveIntensity: win.is_serving ? 0.03 : 0.012,
+                })
+            );
             if (showWindowLabel) {
                 const labelZOffset = localIndex % 2 === 0 ? -5.4 : 5.4;
+                // Thin themed signboard band at label height; the retained side
+                // label renders just in front of it (slightly larger +x).
+                this._box(group, 'stall signboard band',
+                    [0.5, 5.4, 19.5],
+                    [x + 9.3, y + 16.8 + (localIndex % 3) * 1.3, z],
+                    this._photoMat(sth.sign, {
+                        opacity: win.is_open ? 0.94 : 0.72,
+                        roughness: sth.roughness,
+                        emissive: sth.sign,
+                        emissiveIntensity: win.is_serving ? 0.03 : 0.012,
+                    })
+                );
                 const sideLabel = this._label(
                     windowLabelLines(this._windowLabel(win, floorId, localIndex)),
                     x + 10.0,
@@ -1631,7 +1683,9 @@ export class CanteenScene {
         );
         this._box(group, 'stall open-kitchen glass',
             [FRONT_WINDOW_COUNTER_SIZE[0] - 0.6, 2.0, 0.5],
-            [x, y + 5.6, z + FRONT_WINDOW_COUNTER_SIZE[2] / 2 + 0.55],
+            // z-separated from the retained semi-transparent 'glass food guard'
+            // (centre + 0.20) so the two transparent passes never overlap.
+            [x, y + 5.6, z + FRONT_WINDOW_COUNTER_SIZE[2] / 2 + 0.95],
             this._photoMat(th.glass, {
                 opacity: 0.34,
                 roughness: th.roughness,
@@ -1666,7 +1720,7 @@ export class CanteenScene {
                 emissiveIntensity: win.is_serving ? 0.035 : 0.015,
             })
         );
-        // Additional thin status strip beside the retained rail, same open/serving/closed logic.
+        // Additional thin status strip stacked above the retained rail, same open/serving/closed logic.
         this._box(group, 'stall status strip',
             [FRONT_WINDOW_STATUS_RAIL_SIZE[0] + 4, 0.5, 0.5],
             [x, y + 7.0, z - FRONT_WINDOW_COUNTER_SIZE[2] / 2 - 0.55],
@@ -2371,15 +2425,15 @@ export class CanteenScene {
                 this._camTarget.look.copy(topLook).lerp(expandedLook, progress);
             }
         } else {
-            // A 总览：默认进来先看楼体，地面只保留少量空间参照。
-            // Legacy contract token: this._camTarget.pos.set(OVERVIEW_CAMERA_X, topY + OVERVIEW_CAMERA_Y_PADDING, OVERVIEW_CAMERA_Z);
+            // A 总览：正面居中视角，X 居中，Y 在楼层中段偏上，Z 正前方适当距离。
             const centerY = topY * OVERVIEW_LOOK_Y_RATIO + OVERVIEW_LOOK_Y_OFFSET;
+            const frontZ = Math.max(OVERVIEW_CAMERA_Z, buildingFootprint.maxZ + 300);
             this._camTarget.pos.set(
-                buildingFootprint.centerX + Math.max(OVERVIEW_THREE_QUARTER_MIN_X, buildingFootprint.width * OVERVIEW_THREE_QUARTER_X_RATIO),
-                topY + Math.max(OVERVIEW_CAMERA_Y_PADDING + OVERVIEW_THREE_QUARTER_Y_PADDING, buildingFootprint.width * OVERVIEW_THREE_QUARTER_HEIGHT_RATIO),
-                Math.max(OVERVIEW_CAMERA_Z, buildingFootprint.maxZ + 250) + Math.max(OVERVIEW_THREE_QUARTER_Z_PADDING, buildingFootprint.depth * OVERVIEW_THREE_QUARTER_DEPTH_RATIO)
+                buildingFootprint.centerX,
+                topY * 0.5 + OVERVIEW_CAMERA_Y_PADDING,
+                frontZ
             );
-            this._camTarget.look.set(buildingFootprint.centerX + buildingFootprint.width * OVERVIEW_LOOK_PANEL_CLEARANCE_X_RATIO, centerY, buildingFootprint.centerZ);
+            this._camTarget.look.set(buildingFootprint.centerX, centerY, buildingFootprint.centerZ);
         }
     }
 
