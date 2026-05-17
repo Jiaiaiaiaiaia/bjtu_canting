@@ -5,6 +5,10 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
+const LOW_GLARE_BLOOM_STRENGTH = 0.12;
+const LOW_GLARE_BLOOM_RADIUS = 0.18;
+const LOW_GLARE_BLOOM_THRESHOLD = 0.96;
+
 export class SceneFX {
   constructor() {
     this.enabled = false;
@@ -19,15 +23,15 @@ export class SceneFX {
     this._renderer = renderer; this._scene = scene; this._camera = camera;
     try {
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.05;
+      renderer.toneMappingExposure = 0.90;
       const size = renderer.getSize(new THREE.Vector2());
       const composer = new EffectComposer(renderer);
       composer.addPass(new RenderPass(scene, camera));
       const bloom = new UnrealBloomPass(
         new THREE.Vector2(Math.max(1, size.x), Math.max(1, size.y)),
-        0.65,   // strength（保守，仅提亮高 emissive）
-        0.4,    // radius
-        0.85    // threshold（仅窗口/流线/交通核等高亮溢出）
+        LOW_GLARE_BLOOM_STRENGTH,
+        LOW_GLARE_BLOOM_RADIUS,
+        LOW_GLARE_BLOOM_THRESHOLD
       );
       composer.addPass(bloom);
       composer.addPass(new OutputPass());

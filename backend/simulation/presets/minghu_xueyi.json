@@ -1,6 +1,6 @@
 {
   "id": "minghu_xueyi",
-  "display_name": "明湖学一食堂",
+  "display_name": "明湖",
   "campus_position": {"x": 120, "y": 80},
   "entrances": 2,
   "avg_eat_time_minutes": 15,
@@ -21,7 +21,7 @@
         "active_count": 6,
         "avg_serve_time_seconds": 30,
         "by_type": {"rice": 2, "noodle": 2, "specialty": 2},
-        "service_time_notes": "A.11 stub：明湖学一 1F 调研占位，实地复核后回填。"
+        "service_time_notes": "A.11 stub：明湖 1F 调研占位，实地复核后回填。"
       },
       "seats": {"count": 172, "layout_hint": "estimated 1F dining area"},
       "layout": {
@@ -39,7 +39,7 @@
         "active_count": 13,
         "avg_serve_time_seconds": 30,
         "by_type": {"rice": 5, "noodle": 3, "specialty": 5},
-        "service_time_notes": "A.11 stub：明湖学一 2F 调研占位，实地复核后回填。"
+        "service_time_notes": "A.11 stub：明湖 2F 调研占位，实地复核后回填。"
       },
       "seats": {"count": 272, "layout_hint": "estimated 2F dining area"},
       "layout": {
@@ -57,7 +57,7 @@
         "active_count": 14,
         "avg_serve_time_seconds": 30,
         "by_type": {"rice": 5, "noodle": 4, "specialty": 5},
-        "service_time_notes": "A.11 stub：明湖学一 3F 调研占位，实地复核后回填。"
+        "service_time_notes": "A.11 stub：明湖 3F 调研占位，实地复核后回填。"
       },
       "seats": {"count": 290, "layout_hint": "estimated 3F dining area"},
       "layout": {

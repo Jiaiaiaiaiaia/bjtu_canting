@@ -74,7 +74,6 @@
 
     function refreshCampusView(snapshot) {
         if (!snapshot) return;
-        if (App.renderCampusMap) App.renderCampusMap(snapshot);
 
         const order = canteenOrderOf(snapshot.canteen_order, snapshot.canteens);
         state().canteenOrder = order;

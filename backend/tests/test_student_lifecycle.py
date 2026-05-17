@@ -1,7 +1,6 @@
 """A.7.1 student_lifecycle 进程函数单元测试（5 条核心路径）。"""
 import random
 import simpy
-import pytest
 
 from simulation.student import Student, student_lifecycle
 from simulation.canteen import Canteen
@@ -63,6 +62,25 @@ def make_canteen(env, cid, *, x=0, y=0, windows=2, seats=10, avg_serve=30, weigh
     })
 
 
+def make_two_floor_canteen(env, cid, *, avg_serve=1):
+    """两层轻量 Canteen：每层都能打饭和就餐。"""
+    return Canteen(env, {
+        "id": cid,
+        "display_name": cid,
+        "campus_position": {"x": 0, "y": 0},
+        "avg_serve_time_seconds": avg_serve,
+        "avg_eat_time_minutes": 1,
+        "arrival_weight": 1.0,
+        "typical_wait_seconds": 200,
+        "floors": [
+            {"floor_id": 1, "windows": {"physical_count": 1, "active_count": 1},
+             "seats": {"count": 2}},
+            {"floor_id": 2, "windows": {"physical_count": 1, "active_count": 1},
+             "seats": {"count": 2}},
+        ],
+    })
+
+
 def make_campus(canteens, *, walking_seconds=None, entrance_walks=None):
     cfg = {
         "entrance_position": {"x": 0, "y": 0},
@@ -85,6 +103,28 @@ def make_router(campus, *, info_mode="local_estimate", switch_ratio=1.3,
     rng = random.Random(seed)
     # Router 不调 env，可传 None
     return StudentRouter(None, cfg, campus, rng)
+
+
+class PickSecond:
+    def choice(self, items):
+        return items[1] if len(items) > 1 else items[0]
+
+
+class PickFirst:
+    def choice(self, items):
+        return items[0]
+
+
+class FixedCanteenRouter:
+    def __init__(self, canteen):
+        self.canteen = canteen
+        self.rng = PickSecond()
+
+    def pick_initial(self, student, canteens):
+        return self.canteen
+
+    def try_switch(self, student, canteens, exclude_id):
+        return None
 
 
 # ---------- Tests ----------
@@ -238,6 +278,24 @@ def test_lifecycle_record_wait_called_when_serving():
     )
 
 
+def test_lifecycle_uses_random_window_when_not_congested():
+    """窗口未拥堵时，lifecycle 应按随机选择窗口，不应总是去最短队。"""
+    env = simpy.Environment()
+    canteen = make_two_floor_canteen(env, "minghu")
+    canteens = {"minghu": canteen}
+    campus = make_campus(canteens, entrance_walks={"minghu": 1})
+    coordinator = StubCoordinator(env)
+    router = FixedCanteenRouter(canteen)
+
+    s = Student(id=1, state="arriving", patience_threshold=180)
+    env.process(student_lifecycle(env, s, router, canteens, campus, coordinator))
+    env.run(until=30)
+
+    assert s.state == "eating"
+    assert s.current_window_id == canteen.windows[1].id
+    assert s.current_floor_id == 2
+
+
 # 6. 硬等分支：patience 超时但 try_switch 返回 None（唯一食堂无备选）→ yield req 硬等
 def test_lifecycle_hard_waits_when_no_switch_alternative():
     """硬等分支：当 patience 超时但 try_switch 找不到替代食堂时，
@@ -299,3 +357,84 @@ def test_lifecycle_hard_waits_when_no_switch_alternative():
     assert s.id in coordinator.left_calls, (
         f"学生离开时 on_student_left 应被调，实际 left_calls = {coordinator.left_calls}"
     )
+
+
+def test_lifecycle_prefers_seat_on_service_floor():
+    """学生随机到 2 楼窗口打饭后，2 楼有空座时应优先坐 2 楼。"""
+    env = simpy.Environment()
+    canteen = make_two_floor_canteen(env, "minghu")
+    canteens = {"minghu": canteen}
+    campus = make_campus(canteens, entrance_walks={"minghu": 1})
+    coordinator = StubCoordinator(env)
+    router = FixedCanteenRouter(canteen)
+
+    s = Student(id=1, state="arriving", patience_threshold=180)
+    env.process(student_lifecycle(env, s, router, canteens, campus, coordinator))
+    env.run(until=30)
+
+    occupied = [seat for seat in canteen.seats if seat.student is s]
+    assert s.state == "eating"
+    assert len(occupied) == 1
+    assert occupied[0].floor_id == 2
+
+
+def test_lifecycle_waiting_for_seat_keeps_service_floor():
+    """同楼层没座等待时，学生仍应保留服务楼层，供前端显示在原楼层等座区。"""
+    env = simpy.Environment()
+    canteen = make_two_floor_canteen(env, "minghu")
+    canteens = {"minghu": canteen}
+    campus = make_campus(canteens, entrance_walks={"minghu": 1})
+    coordinator = StubCoordinator(env)
+    router = FixedCanteenRouter(canteen)
+
+    for seat in list(canteen.seat_pool.items):
+        canteen.seat_pool.items.remove(seat)
+        seat.student = Student(id=1000 + seat.id, state="eating")
+
+    s = Student(id=1, state="arriving", patience_threshold=180)
+    env.process(student_lifecycle(env, s, router, canteens, campus, coordinator))
+    env.run(until=30)
+
+    snap = canteen.snapshot()
+    waiting = [item for item in snap["students"] if item["id"] == s.id]
+    floor_two_waiting = [
+        item for floor in snap["floors"] if floor["floor_id"] == 2
+        for item in floor["students"] if item["id"] == s.id
+    ]
+    assert s.state == "waiting_seat"
+    assert waiting == [{
+        "id": s.id,
+        "position": "waiting_queue",
+        "position_detail": 0,
+        "floor_id": 2,
+    }]
+    assert floor_two_waiting == waiting
+
+
+def test_lifecycle_does_not_switch_floor_from_queue_visibility():
+    """拥挤楼层不会触发可见队伍压力换层；楼层/窗口选择保持真随机。"""
+    env = simpy.Environment()
+    canteen = make_two_floor_canteen(env, "minghu", avg_serve=30)
+    canteens = {"minghu": canteen}
+    campus = make_campus(canteens, entrance_walks={"minghu": 1})
+    coordinator = StubCoordinator(env)
+    router = FixedCanteenRouter(canteen)
+    router.rng = PickFirst()
+
+    for i in range(4):
+        canteen.windows[0].join_queue(Student(id=1200 + i, state="queueing"))
+
+    s = Student(id=1, state="arriving", patience_threshold=180)
+    env.process(student_lifecycle(env, s, router, canteens, campus, coordinator))
+    env.run(until=2)
+
+    snap = canteen.snapshot()
+    switching = [
+        item for item in snap["students"]
+        if item["id"] == s.id and item["position"] == "floor_switching"
+    ]
+
+    assert s.state == "serving"
+    assert s.current_floor_id == 1
+    assert s.target_floor_id is None
+    assert switching == []

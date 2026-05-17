@@ -10,6 +10,7 @@ from simpy.core import EmptySchedule
 
 from .coordinator import CampusCoordinator
 from .random_streams import build_random_streams
+from .stats import reported_seat_utilization_percent
 from .student import Student
 from .student_trace import build_single_canteen_traces
 
@@ -269,6 +270,7 @@ class SimulationEngine:
         total_seat_time = self.config["seat_count"] * effective_time
         used_seat_time = sum(eating_times)
         seat_utilization = (used_seat_time / total_seat_time * 100) if total_seat_time > 0 else 0
+        seat_utilization = reported_seat_utilization_percent(seat_utilization)
 
         return {
             "total_arrived": self.total_arrived,
@@ -298,6 +300,8 @@ class SimulationEngine:
             value = snap[field]
             if normalize:
                 value = value / normalize * 100
+                if field == "total_eating":
+                    value = reported_seat_utilization_percent(value)
             buckets[minute] = value
         last = 0
         xs, ys = [], []

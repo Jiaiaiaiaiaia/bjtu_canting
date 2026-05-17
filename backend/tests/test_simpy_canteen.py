@@ -163,3 +163,139 @@ def test_canteen_snapshot_total_in_queue_includes_windows_and_seat_waiting():
     c.join_seat_queue(Student(id=12, state="waiting_seat"))
     snap = c.snapshot()
     assert snap["total_in_queue"] == 2 + 3  # 5
+
+
+def test_canteen_choose_window_uses_random_choice_when_not_congested():
+    """窗口没有明显拥堵时，学生应随机选窗口，而不是默认最短队。"""
+    env = simpy.Environment()
+    c = Canteen(env, make_def([
+        {"floor_id": 1, "windows": {"physical_count": 3, "active_count": 3}, "seats": {"count": 5}}
+    ]))
+
+    class PickThird:
+        def choice(self, items):
+            return items[2]
+
+    chosen = c.choose_window(PickThird())
+
+    assert chosen.id == c.windows[2].id
+
+
+def test_canteen_choose_initial_floor_uses_true_random_not_queue_weight():
+    """初始楼层应是真随机，不应按队伍压力偏向更空楼层。"""
+    env = simpy.Environment()
+    c = Canteen(env, make_def([
+        {"floor_id": 1, "windows": {"physical_count": 1, "active_count": 1}, "seats": {"count": 5}},
+        {"floor_id": 2, "windows": {"physical_count": 1, "active_count": 1}, "seats": {"count": 5}},
+    ]))
+    for i in range(5):
+        c.windows[1].join_queue(Student(id=400 + i, state="queueing"))
+
+    class PickSecondEvenIfChoicesExists:
+        def __init__(self):
+            self.choice_called = False
+            self.choices_called = False
+
+        def choices(self, items, weights, k):
+            self.choices_called = True
+            return [items[weights.index(max(weights))]]
+
+        def choice(self, items):
+            self.choice_called = True
+            return items[1]
+
+    rng = PickSecondEvenIfChoicesExists()
+    floor_id = c.choose_initial_floor(rng)
+
+    assert floor_id == 2
+    assert rng.choice_called is True
+    assert rng.choices_called is False
+
+
+def test_canteen_choose_window_uses_true_random_not_queue_weight():
+    """窗口选择应是真随机，不应按队伍压力偏向短队窗口。"""
+    env = simpy.Environment()
+    c = Canteen(env, make_def([
+        {"floor_id": 1, "windows": {"physical_count": 2, "active_count": 2}, "seats": {"count": 5}}
+    ]))
+    for i in range(3):
+        c.windows[0].join_queue(Student(id=500 + i, state="queueing"))
+
+    class PickFirstEvenIfChoicesExists:
+        def __init__(self):
+            self.choice_called = False
+            self.choices_called = False
+
+        def choices(self, items, weights, k):
+            self.choices_called = True
+            return [items[weights.index(max(weights))]]
+
+        def choice(self, items):
+            self.choice_called = True
+            return items[0]
+
+    rng = PickFirstEvenIfChoicesExists()
+    chosen = c.choose_window(rng, current_floor_id=1)
+
+    assert chosen.id == c.windows[0].id
+    assert rng.choice_called is True
+    assert rng.choices_called is False
+
+
+def test_canteen_choose_window_keeps_random_choice_when_crowded():
+    """随机选中的窗口拥堵时，也不应因队伍压力改去更空窗口。"""
+    env = simpy.Environment()
+    c = Canteen(env, make_def([
+        {"floor_id": 1, "windows": {"physical_count": 2, "active_count": 2}, "seats": {"count": 5}}
+    ]))
+
+    for i in range(4):
+        c.windows[0].join_queue(Student(id=100 + i, state="queueing"))
+
+    class PickFirst:
+        def choice(self, items):
+            return items[0]
+
+    chosen = c.choose_window(PickFirst())
+
+    assert chosen.id == c.windows[0].id
+
+
+def test_canteen_choose_window_does_not_reroute_from_crowded_start_floor():
+    """学生初始楼层拥堵时，不应因为其他楼层更空而自动换层。"""
+    env = simpy.Environment()
+    c = Canteen(env, make_def([
+        {"floor_id": 1, "windows": {"physical_count": 1, "active_count": 1}, "seats": {"count": 5}},
+        {"floor_id": 2, "windows": {"physical_count": 1, "active_count": 1}, "seats": {"count": 5}},
+    ]))
+
+    for i in range(4):
+        c.windows[0].join_queue(Student(id=300 + i, state="queueing"))
+
+    class PickFirst:
+        def choice(self, items):
+            return items[0]
+
+    chosen = c.choose_window(PickFirst(), current_floor_id=1)
+
+    assert chosen.id == c.windows[0].id
+    assert chosen.floor_id == 1
+
+
+def test_canteen_choose_window_keeps_random_choice_for_small_queue():
+    """只有少量排队时，不应把随机选择强行改成最短队。"""
+    env = simpy.Environment()
+    c = Canteen(env, make_def([
+        {"floor_id": 1, "windows": {"physical_count": 2, "active_count": 2}, "seats": {"count": 5}}
+    ]))
+
+    for i in range(3):
+        c.windows[0].join_queue(Student(id=200 + i, state="queueing"))
+
+    class PickFirst:
+        def choice(self, items):
+            return items[0]
+
+    chosen = c.choose_window(PickFirst())
+
+    assert chosen.id == c.windows[0].id

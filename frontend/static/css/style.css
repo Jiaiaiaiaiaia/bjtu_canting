@@ -366,7 +366,6 @@ button:disabled {
     gap: 12px;
 }
 
-.view-switcher,
 .render-switcher,
 .canteen-switcher {
     display: inline-flex;
@@ -378,7 +377,6 @@ button:disabled {
     border-radius: var(--radius-md);
 }
 
-.view-switcher button,
 .render-switcher button {
     padding: 6px 12px;
     color: var(--c-text-secondary);
@@ -386,7 +384,6 @@ button:disabled {
     border: 1px solid transparent;
 }
 
-.view-switcher button.active,
 .render-switcher button.active {
     color: var(--c-primary);
     background: var(--c-primary-light);
@@ -406,12 +403,6 @@ button:disabled {
     font-family: var(--font-stack);
     color: var(--c-text);
     background: #fff;
-}
-
-.campus-overview-panel {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 10px;
 }
 
 .info-panel {
@@ -487,20 +478,6 @@ button:disabled {
     width: 100%;
     height: auto;
     background: #fafaf9;
-    border: 1px dashed var(--c-border-dark);
-    border-radius: var(--radius-sm);
-}
-
-.campus-map-container {
-    width: 100%;
-    min-height: 360px;
-    margin-bottom: 10px;
-}
-
-#campus-map-svg {
-    width: 100%;
-    height: 360px;
-    background: #f8fafc;
     border: 1px dashed var(--c-border-dark);
     border-radius: var(--radius-sm);
 }
@@ -603,31 +580,6 @@ button:disabled {
     color: var(--c-primary);
     background: var(--c-primary-light);
     border-color: var(--c-primary-border);
-}
-
-.canteen-marker {
-    cursor: pointer;
-}
-
-.canteen-marker rect {
-    transition: fill 0.15s, stroke 0.15s;
-}
-
-.canteen-marker:hover rect {
-    stroke: var(--c-primary);
-    stroke-width: 2;
-}
-
-.canteen-marker[data-pending="true"] {
-    cursor: not-allowed;
-}
-
-.canteen-marker[data-pending="true"] text {
-    fill: #92400e;
-}
-
-.canteen-marker[data-pending="true"]:hover rect {
-    stroke: var(--c-warning);
 }
 
 .control-panel {
@@ -789,6 +741,14 @@ button:disabled {
     border-radius: var(--radius-md);
 }
 
+.intervention-effect-panel {
+    margin: 0 0 20px;
+    padding: 16px 18px;
+    background: var(--c-card);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-md);
+}
+
 .intervention-header {
     display: flex;
     align-items: baseline;
@@ -816,7 +776,21 @@ button:disabled {
     gap: 12px;
 }
 
+.intervention-effect-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
 .intervention-card {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    background: var(--c-bg);
+}
+
+.intervention-effect-card {
     min-width: 0;
     padding: 14px;
     border: 1px solid var(--c-border);
@@ -839,6 +813,26 @@ button:disabled {
     background: #ecfdf5;
 }
 
+.intervention-effect-card.improved {
+    border-color: #bbf7d0;
+    background: #ecfdf5;
+}
+
+.intervention-effect-card.worse {
+    border-color: var(--c-primary-border);
+    background: var(--c-primary-light);
+}
+
+.intervention-effect-card.rejected {
+    border-color: #d1d5db;
+    background: #f9fafb;
+}
+
+.intervention-effect-card.neutral {
+    border-color: #e5e7eb;
+    background: var(--c-bg);
+}
+
 .intervention-tag {
     display: inline-flex;
     margin-bottom: 8px;
@@ -848,6 +842,13 @@ button:disabled {
 }
 
 .intervention-card strong {
+    display: block;
+    color: var(--c-text);
+    font-size: 15px;
+    line-height: 1.4;
+}
+
+.intervention-effect-card strong {
     display: block;
     color: var(--c-text);
     font-size: 15px;
@@ -953,28 +954,68 @@ button:disabled {
     color: var(--c-primary);
 }
 
-.charts-container {
+.analysis-evidence-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
     gap: 12px;
     margin-bottom: 20px;
 }
 
-.chart-item {
+.analysis-evidence-card {
     padding: 16px;
     background: var(--c-card);
     border: 1px solid var(--c-border);
     border-radius: var(--radius-lg);
+    min-width: 0;
 }
 
-.chart-item h3 {
+.analysis-card-main {
+    grid-row: span 2;
+}
+
+.analysis-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.analysis-card-header h3 {
     margin: 0 0 12px;
     font-size: 14px;
     font-weight: 600;
     color: var(--c-text);
 }
 
+.analysis-card-summary {
+    margin: 0;
+    color: var(--c-text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.analysis-badge {
+    flex: 0 0 auto;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #3730a3;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 .chart { width: 100%; height: 300px; }
+
+.analysis-timeline-chart {
+    height: 402px;
+}
+
+.analysis-rank-chart,
+.analysis-compact-chart {
+    height: 175px;
+}
 
 .page-actions {
     display: flex;
@@ -1072,21 +1113,24 @@ button:disabled {
 /* --- Responsive --- */
 @media (max-width: 900px) {
     .info-panel { grid-template-columns: repeat(3, 1fr); }
-    .campus-overview-panel { grid-template-columns: repeat(3, 1fr); }
     .stats-overview { grid-template-columns: repeat(3, 1fr); }
     .diagnosis-grid { grid-template-columns: 1fr; }
     .intervention-list { grid-template-columns: 1fr; }
+    .intervention-effect-list { grid-template-columns: 1fr; }
     .scenario-header { flex-direction: column; }
     .scenario-row { grid-template-columns: 1fr; gap: 6px; }
-    .charts-container { grid-template-columns: 1fr; }
+    .analysis-evidence-grid { grid-template-columns: 1fr; }
+    .analysis-card-main { grid-row: auto; }
+    .analysis-timeline-chart { height: 320px; }
+    .analysis-rank-chart,
+    .analysis-compact-chart { height: 220px; }
     .config-card { margin: 16px; padding: 24px; }
     .simulation-toolbar { align-items: stretch; flex-direction: column; }
-    .view-switcher, .render-switcher, .canteen-switcher { justify-content: space-between; }
+    .render-switcher, .canteen-switcher { justify-content: space-between; }
 }
 
 @media (max-width: 640px) {
     .info-panel { grid-template-columns: 1fr; }
-    .campus-overview-panel { grid-template-columns: 1fr; }
     .stats-overview { grid-template-columns: repeat(2, 1fr); }
     .config-form { grid-template-columns: 1fr; }
     .single-mode-form { grid-template-columns: 1fr; }
@@ -1108,7 +1152,6 @@ button:disabled {
 body.twin-immersive .container > header,
 body.twin-immersive .container > main > .page > h2,
 body.twin-immersive #simulation-page .simulation-toolbar,
-body.twin-immersive #simulation-page .campus-overview-panel,
 body.twin-immersive #simulation-page .info-panel,
 body.twin-immersive #simulation-page .canteen-layout > .canvas-header,
 body.twin-immersive #simulation-page .canteen-layout > .floor-tabs,
@@ -1143,7 +1186,7 @@ body.twin-immersive .canteen-layout {
     background: transparent !important;
 }
 
-/* --- 2. Full-bleed 3D stage with V7 radial glow shell background --- */
+/* --- 2. Full-bleed 3D stage with low-glare shell background --- */
 body.twin-immersive #three-stage {
     position: fixed !important;
     inset: 0 !important;
@@ -1152,10 +1195,7 @@ body.twin-immersive #three-stage {
     width: 100vw !important;
     height: 100vh !important;
     overflow: hidden !important;
-    background:
-        radial-gradient(circle at 18% 10%, rgba(82, 214, 209, .18), transparent 27%),
-        radial-gradient(circle at 88% 0%,  rgba(231, 189, 99, .12), transparent 28%),
-        linear-gradient(180deg, #101c2e 0%, #07111d 100%);
+    background: linear-gradient(180deg, #0b1524 0%, #07111d 100%);
 }
 
 /* --- 3. Glass panel variables (V7 cold-teal palette) --- */
@@ -1202,6 +1242,19 @@ body.twin-immersive .twin-topbar {
     gap: 10px;
     padding: 8px 12px;
     pointer-events: auto;
+}
+
+body.twin-immersive .twin-topbar-brand {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 10px;
+    margin-right: auto;
+    color: var(--ti-ink);
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0;
+    white-space: nowrap;
 }
 
 /* --- 6. Toolbar — inline inside topbar (immersive_ui places it there) --- */

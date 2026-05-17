@@ -14,10 +14,13 @@
 export class ImmersiveUI {
     constructor() {
         this._root = null;       // injected root div (#twin-immersive-ui)
+        this._brandEl = null;    // .twin-topbar-brand element
         this._statusEl = null;   // .twin-status element
         this._floorstrip = null; // .twin-floorstrip element
         this._cutaway = false;
         this._heat = false;
+        this._viewPreset = 'overview';
+        this._viewPresetButtons = new Map();
         this._sceneApi = null;
     }
 
@@ -40,7 +43,9 @@ export class ImmersiveUI {
 
         const brand = document.createElement('span');
         brand.className = 'twin-topbar-brand';
-        brand.textContent = '北交大食堂数字孪生';
+        brand.textContent = '明湖食堂';
+        brand.setAttribute('aria-label', '明湖食堂标识');
+        this._brandEl = brand;
         topbar.appendChild(brand);
 
         // 视图切换区段：校园视图 / 食堂视图（通过现有 render-switcher 实现）
@@ -93,6 +98,29 @@ export class ImmersiveUI {
         // ── Toolbar ─────────────────────────────────────────────────────────
         const toolbar = document.createElement('div');
         toolbar.className = 'twin-toolbar';
+
+        const viewPresets = [
+            { id: 'overview', label: '总览', title: '整栋斜俯视角' },
+            { id: 'front', label: '正面', title: '正面剖面视角' },
+            { id: 'side', label: '侧面', title: '侧向观察视角' },
+            { id: 'top', label: '俯视', title: '俯视平面视角' },
+            { id: 'free', label: '自由', title: '自由旋转视角' },
+        ];
+        viewPresets.forEach(preset => {
+            const btn = document.createElement('button');
+            btn.className = 'twin-toolbar-btn';
+            btn.dataset.viewPreset = preset.id;
+            btn.title = preset.title;
+            btn.textContent = preset.label;
+            btn.classList.toggle('active', preset.id === this._viewPreset);
+            btn.addEventListener('click', () => {
+                this._viewPreset = preset.id;
+                this._syncViewPresetButtons();
+                this._sceneApi?.setViewPreset?.(preset.id);
+            });
+            this._viewPresetButtons.set(preset.id, btn);
+            toolbar.appendChild(btn);
+        });
 
         // 剖 cutaway 切换
         const cutawayBtn = document.createElement('button');
@@ -194,6 +222,10 @@ export class ImmersiveUI {
 
         if (!this._root) return;
 
+        if (frame && this._brandEl) {
+            this._brandEl.textContent = this._canteenBrandLabel(frame.displayName);
+        }
+
         // ── 更新 floorstrip 楼层按钮 ──────────────────────────────────────
         if (frame && Array.isArray(frame.floors)) {
             // 构建当前楼层 id 集合
@@ -229,6 +261,19 @@ export class ImmersiveUI {
                     strip.appendChild(btn);
                 }
             });
+
+            const mode = sceneApi?.getMode?.() || 'overview';
+            const activeFloorId = sceneApi?.getFocusFloorId?.();
+            this._viewPreset = sceneApi?.getViewPreset?.() || this._viewPreset || 'overview';
+            this._syncViewPresetButtons();
+            const allFloorBtn = strip.querySelector('.twin-floorstrip-btn:not([data-floor])');
+            if (allFloorBtn) {
+                allFloorBtn.classList.toggle('active', mode !== 'focus');
+            }
+            strip.querySelectorAll('.twin-floorstrip-btn[data-floor]').forEach(btn => {
+                btn.classList.toggle('active', mode === 'focus'
+                    && btn.dataset.floor === String(activeFloorId));
+            });
         }
         // 若 frame 为 null（campus 路径），保留已有的空/中性 strip，不抛出
 
@@ -254,10 +299,25 @@ export class ImmersiveUI {
             this._root.remove();
             this._root = null;
         }
+        this._brandEl = null;
         this._statusEl = null;
         this._floorstrip = null;
         this._sceneApi = null;
         this._cutaway = false;
         this._heat = false;
+        this._viewPreset = 'overview';
+        this._viewPresetButtons.clear();
+    }
+
+    _syncViewPresetButtons() {
+        this._viewPresetButtons.forEach((btn, id) => {
+            btn.classList.toggle('active', id === this._viewPreset);
+        });
+    }
+
+    _canteenBrandLabel(name) {
+        const label = String(name || '').trim();
+        if (!label) return '明湖食堂';
+        return label.endsWith('食堂') ? label : `${label}食堂`;
     }
 }

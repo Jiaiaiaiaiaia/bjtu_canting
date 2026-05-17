@@ -13,10 +13,12 @@ class Student:
     id: int
     state: Literal[
         "arriving", "walking", "queueing", "switching",
-        "serving", "waiting_seat", "eating", "left"
+        "floor_switching", "serving", "waiting_seat", "eating", "left"
     ]
     current_canteen_id: Optional[str] = None
     current_window_id: Optional[int] = None
+    current_floor_id: Optional[int] = None
+    target_floor_id: Optional[int] = None
     target_canteen_id: Optional[str] = None
     arrived_at: float = 0.0
     walk_time: float = 0.0
@@ -24,6 +26,9 @@ class Student:
     service_time: float = 0.0
     eat_time: float = 0.0
     switch_count: int = 0
+    floor_switch_count: int = 0
+    floor_switch_start_time: float = 0.0
+    floor_switch_duration: float = 0.0
     patience_threshold: float = 180.0   # 创建时按正态分布采样覆盖
     walking_start_time: float = 0.0     # Coordinator 维护，给 Campus.transit_progress 用
     trace: object = None
@@ -54,8 +59,31 @@ def student_lifecycle(env, student, router, canteens, campus, coordinator):
     queue_phase_total_wait = 0.0
     while True:
         canteen = canteens[student.current_canteen_id]
-        window = canteen.shortest_window()
+        if student.current_floor_id is None:
+            student.current_floor_id = canteen.choose_initial_floor(
+                getattr(router, "rng", None)
+            )
+        window = canteen.choose_window(
+            getattr(router, "rng", None),
+            current_floor_id=student.current_floor_id,
+        )
+        if window.floor_id != student.current_floor_id:
+            from_floor_id = student.current_floor_id
+            target_floor_id = window.floor_id
+            student.state = "floor_switching"
+            student.floor_switch_count += 1
+            canteen.start_floor_transfer(student, from_floor_id, target_floor_id)
+            try:
+                floor_walk = canteen.stair_travel_time(from_floor_id, target_floor_id)
+                yield env.timeout(floor_walk)
+                student.walk_time += floor_walk
+                student.current_floor_id = target_floor_id
+            finally:
+                canteen.finish_floor_transfer(student)
+            student.target_floor_id = None
+
         student.current_window_id = window.id
+        student.current_floor_id = window.floor_id
         student.state = "queueing"
 
         # 顺序关键：先入队 waiting_students，再 request 资源。
@@ -90,6 +118,8 @@ def student_lifecycle(env, student, router, canteens, campus, coordinator):
                         # 注意：原食堂 total_arrived 不递减；切换会让
                         # sum(canteens.total_arrived) > coordinator.total_arrived。
                         student.current_canteen_id = alt.id
+                        student.current_floor_id = None
+                        student.target_floor_id = None
                         canteens[alt.id].total_arrived += 1
                         continue  # with 退出 → req 释放
                     # 没替代：硬等
@@ -129,9 +159,10 @@ def student_lifecycle(env, student, router, canteens, campus, coordinator):
     canteen.join_seat_queue(student)
 
     try:
-        seat = yield canteen.seat_pool.get()
+        seat = yield canteen.get_seat_prefer_floor(student.current_floor_id)
         canteen.leave_seat_queue(student)
         seat.student = student
+        student.current_floor_id = seat.floor_id
         student.state = "eating"
         trace = getattr(student, "trace", None)
         eat_duration = sample_eat_time(

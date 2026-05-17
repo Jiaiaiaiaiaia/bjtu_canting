@@ -110,7 +110,6 @@ def test_campus_js_refresh_filters_active_floor_and_updates_overview():
             }},
             drawCanteen(data) {{ global.drawn = data; }},
             updateInfoPanel(data) {{ global.info = data; }},
-            renderCampusMap(snapshot) {{ global.mapUpdated = snapshot.mode; }},
             renderFloorTabs(data) {{ global.tabsFor = data.id; }},
           }},
         }};
@@ -127,7 +126,6 @@ def test_campus_js_refresh_filters_active_floor_and_updates_overview():
           waitingQueueLength: global.drawn.waiting_queue_length,
           arrived: nodes['campus-total-arrived'].textContent,
           avgWaiting: nodes['campus-avg-waiting'].textContent,
-          mapUpdated: global.mapUpdated,
           tabsFor: global.tabsFor,
         }}));
     """)
@@ -140,7 +138,6 @@ def test_campus_js_refresh_filters_active_floor_and_updates_overview():
         'waitingQueueLength': 9,
         'arrived': '10',
         'avgWaiting': '3.3 s',
-        'mapUpdated': 'campus',
         'tabsFor': 'minghu_xueyi',
     }
 

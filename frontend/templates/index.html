@@ -35,12 +35,12 @@
                     <fieldset class="mode-selector">
                         <legend>运行模式</legend>
                         <label class="mode-option" for="simulation-mode-single">
-                            <input type="radio" id="simulation-mode-single" name="simulation_mode" value="single" checked>
+                            <input type="radio" id="simulation-mode-single" name="simulation_mode" value="single">
                             单食堂模式
                         </label>
                         <label class="mode-option" for="simulation-mode-campus">
-                            <input type="radio" id="simulation-mode-campus" name="simulation_mode" value="campus">
-                            校园联合模式
+                            <input type="radio" id="simulation-mode-campus" name="simulation_mode" value="campus" checked>
+                            3D 单食堂模式
                         </label>
                     </fieldset>
 
@@ -73,14 +73,14 @@
 
                     <div id="campus-mode-form" hidden class="campus-config-panel">
                         <div id="campus-preset-panel" class="campus-preset-panel">
-                            <button type="button" class="campus-preset-card active" data-campus-preset="default">
-                                <strong>北交大午餐高峰预设</strong>
-                                <span>明湖/学一与学四使用已采集数据；学活保留待补标记。</span>
+                            <button type="button" class="campus-preset-card active" data-campus-preset="single-canteen">
+                                <strong>明湖 3D 数字孪生预设</strong>
+                                <span>单食堂三层布局，支持 3D 主视图、楼层查看和窗口干预。</span>
                             </button>
                             <div id="pending-data-note" class="pending-data-note"></div>
                         </div>
                         <label for="campus-config-json">高级配置 JSON</label>
-                        <textarea id="campus-config-json" spellcheck="false" placeholder="API 预设加载后会自动填入；手动模式请粘贴完整校园 JSON"></textarea>
+                        <textarea id="campus-config-json" spellcheck="false" placeholder="API 预设加载后会自动填入；手动模式请粘贴完整单食堂 JSON"></textarea>
                     </div>
 
                     <div class="form-buttons">
@@ -96,26 +96,10 @@
             <h2>仿真运行</h2>
             <div class="simulation-container">
                 <div class="simulation-toolbar">
-                    <div id="view-switcher" hidden class="view-switcher">
-                        <button type="button" data-view="campus">校园地图</button>
-                        <button type="button" data-view="canteen" class="active">食堂详情</button>
-                    </div>
-                    <div id="canteen-switcher" hidden class="canteen-switcher">
-                        <label for="active-canteen-select">当前查看食堂</label>
-                        <select id="active-canteen-select"></select>
-                    </div>
                     <div id="render-switcher" hidden class="render-switcher">
                         <button type="button" data-render="2d" class="active">2D</button>
                         <button type="button" data-render="3d">3D</button>
                     </div>
-                </div>
-
-                <div id="campus-overview-panel" hidden class="campus-overview-panel">
-                    <div class="info-item"><span class="label">校园到达</span><span id="campus-total-arrived">0</span></div>
-                    <div class="info-item"><span class="label">校园完成</span><span id="campus-total-served">0</span></div>
-                    <div class="info-item"><span class="label">路上人数</span><span id="campus-in-transit">0</span></div>
-                    <div class="info-item"><span class="label">切换次数</span><span id="campus-total-switches">0</span></div>
-                    <div class="info-item info-item-highlight"><span class="label">校园平均等待</span><span id="campus-avg-waiting">0.0 s</span></div>
                 </div>
 
                 <div class="info-panel">
@@ -132,9 +116,6 @@
                     <div class="canvas-header">
                         <span class="canvas-title">食堂平面布局</span>
                         <span class="canvas-legend-bar" id="canvas-legend-bar"></span>
-                    </div>
-                    <div class="campus-map-container" id="campus-map-container" hidden>
-                        <svg id="campus-map-svg"></svg>
                     </div>
                     <div id="three-stage" class="three-stage three-stage--twin" hidden></div>
                     <div class="floor-tabs" id="floor-tabs"></div>
@@ -213,6 +194,20 @@
                 </div>
             </div>
 
+            <div id="intervention-effect-panel" class="intervention-effect-panel">
+                <div class="intervention-header">
+                    <h3>干预效果</h3>
+                    <span id="intervention-effect-summary">等待干预事件</span>
+                </div>
+                <div id="intervention-effect-list" class="intervention-effect-list">
+                    <article class="intervention-effect-card neutral">
+                        <span class="intervention-tag">待数据</span>
+                        <strong>暂无干预事件</strong>
+                        <p class="intervention-impact">运行中开关窗口后显示队列和服务变化。</p>
+                    </article>
+                </div>
+            </div>
+
             <div id="scenario-panel" class="scenario-panel">
                 <div class="scenario-header">
                     <div>
@@ -245,22 +240,44 @@
                 </div>
             </div>
 
-            <div class="charts-container">
-                <div class="chart-item">
-                    <h3>各窗口服务人数</h3>
-                    <div id="window-chart" class="chart"></div>
+            <div class="analysis-evidence-grid">
+                <div class="analysis-evidence-card analysis-card-main">
+                    <div class="analysis-card-header">
+                        <div>
+                            <h3>拥堵时间线</h3>
+                            <p id="timeline-insight" class="analysis-card-summary">完成仿真后显示高峰和座位压力。</p>
+                        </div>
+                        <span id="timeline-badge" class="analysis-badge">等待数据</span>
+                    </div>
+                    <div id="queue-chart" class="chart analysis-timeline-chart"></div>
                 </div>
-                <div class="chart-item">
-                    <h3>窗口利用率</h3>
-                    <div id="pie-chart" class="chart"></div>
+                <div class="analysis-evidence-card">
+                    <div class="analysis-card-header">
+                        <div>
+                            <h3>窗口负载排名</h3>
+                            <p id="window-balance-summary" class="analysis-card-summary">完成仿真后显示最忙和最空窗口。</p>
+                        </div>
+                        <span id="window-balance-badge" class="analysis-badge">等待数据</span>
+                    </div>
+                    <div id="window-chart" class="chart analysis-rank-chart"></div>
                 </div>
-                <div class="chart-item">
-                    <h3>排队人数变化</h3>
-                    <div id="queue-chart" class="chart"></div>
+                <div class="analysis-evidence-card">
+                    <div class="analysis-card-header">
+                        <div>
+                            <h3>服务集中度</h3>
+                            <p id="service-concentration-summary" class="analysis-card-summary">完成仿真后显示窗口服务是否集中。</p>
+                        </div>
+                    </div>
+                    <div id="pie-chart" class="chart analysis-compact-chart"></div>
                 </div>
-                <div class="chart-item">
-                    <h3>座位利用率变化</h3>
-                    <div id="seat-chart" class="chart"></div>
+                <div class="analysis-evidence-card">
+                    <div class="analysis-card-header">
+                        <div>
+                            <h3>座位趋势</h3>
+                            <p id="seat-trend-summary" class="analysis-card-summary">完成仿真后显示座位使用峰值。</p>
+                        </div>
+                    </div>
+                    <div id="seat-chart" class="chart analysis-compact-chart"></div>
                 </div>
             </div>
 
@@ -328,7 +345,6 @@
 <script src="{{ url_for('static', filename='js/analysis_charts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 <script src="{{ url_for('static', filename='js/campus.js') }}"></script>
-<script src="{{ url_for('static', filename='js/campus_map.js') }}"></script>
 <script src="{{ url_for('static', filename='js/floor_tabs.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/three/state_adapter.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/three/canteen_scene.js') }}"></script>

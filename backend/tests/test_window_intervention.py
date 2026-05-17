@@ -5,6 +5,7 @@ from simulation.canteen import Canteen
 from simulation.coordinator import CampusCoordinator
 from simulation.presets.loader import load_single_canteen_preset
 from simulation.random_streams import build_random_streams
+from simulation.student import Student
 
 DEF = {"id": "c", "display_name": "C", "campus_position": {"x":0,"y":0},
        "avg_serve_time_seconds": 10, "avg_eat_time_minutes": 5,
@@ -33,6 +34,41 @@ def test_shortest_window_only_open():
 def test_open_window_capacity_score_excludes_closed():
     c = _canteen()
     assert abs(c.open_window_capacity_score - 3 * (1/10)) < 1e-9
+
+
+def test_add_window_creates_open_physical_window_on_floor():
+    c = _canteen()
+    before_physical = c.physical_window_count
+    before_open = c.open_window_count
+
+    window = c.add_window(floor_id=1)
+
+    assert window.id == max(w.id for w in c.windows)
+    assert window.floor_id == 1
+    assert window.is_open is True
+    assert c.windows[-1] is window
+    assert c.physical_window_count == before_physical + 1
+    assert c.open_window_count == before_open + 1
+
+
+def test_snapshot_exposes_window_open_and_closing_state():
+    c = _canteen()
+    w = c.windows[0]
+    w.is_open = False
+    w.join_queue(Student(id=99, state="queueing"))
+
+    snap = c.snapshot()
+    flat = next(item for item in snap["windows"] if item["id"] == w.id)
+    nested = next(
+        item for floor in snap["floors"]
+        for item in floor["windows"]
+        if item["id"] == w.id
+    )
+
+    assert flat["is_open"] is False
+    assert flat["closing"] is True
+    assert nested["is_open"] is False
+    assert nested["closing"] is True
 
 
 def _coord():

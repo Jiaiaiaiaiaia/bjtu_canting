@@ -1,4 +1,5 @@
 """Window / Seat / FloorMeta dataclass + Canteen 类（spec §2.3）。"""
+import random
 from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 import simpy
@@ -83,6 +84,8 @@ class FloorMeta:
 class Canteen:
     """单食堂仿真容器：多楼层 Window/Seat 展开 + shortest_window + snapshot 双形状。"""
 
+    STAIR_TRAVEL_SECONDS_PER_FLOOR = 12.0
+
     def __init__(self, env: simpy.Environment, definition: dict):
         self.env = env
         self.id = definition["id"]
@@ -150,13 +153,14 @@ class Canteen:
             # avg_serve_time_seconds、也没任何楼层级值时回退到此默认值。
             self.avg_serve_time = default_serve_time or 30.0
 
-        # 座位资源池：simpy.Store 负责"谁抢到座位"的调度（跨楼层共享）
-        self.seat_pool = simpy.Store(env)
+        # 座位资源池：FilterStore 保持 Store 兼容，同时支持同楼层优先取座。
+        self.seat_pool = simpy.FilterStore(env)
         for s in self.seats:
             self.seat_pool.put(s)
 
         # 等座可视化/统计：与 Window.waiting_students 同模式
         self.seat_waiting_students: list = []
+        self.floor_transit_students: list = []
 
         # 食堂级累计统计
         self.total_arrived: int = 0
@@ -180,12 +184,101 @@ class Canteen:
         return sum(1.0 / w.canteen_avg_serve_time
                    for w in self.windows if w.is_open)
 
-    def shortest_window(self) -> Window:
+    def add_window(self, floor_id: int) -> Window:
+        """运行时向指定楼层添加一个开放服务窗口。"""
+        try:
+            floor_id = int(floor_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid floor_id: {floor_id!r}") from exc
+
+        meta = next(
+            (floor for floor in self.floors_meta if floor.floor_id == floor_id),
+            None,
+        )
+        if meta is None:
+            raise ValueError(f"unknown floor_id: {floor_id!r}")
+
+        floor_windows = [w for w in self.windows if w.floor_id == floor_id]
+        floor_serve_time = (
+            floor_windows[-1].canteen_avg_serve_time
+            if floor_windows else self.avg_serve_time
+        )
+        next_window_id = max((w.id for w in self.windows), default=-1) + 1
+        window = Window(
+            id=next_window_id,
+            floor_id=floor_id,
+            canteen_avg_serve_time=floor_serve_time,
+            resource=simpy.Resource(self.env, capacity=1),
+            is_open=True,
+        )
+        self.windows.append(window)
+        self.physical_window_count += 1
+        self.active_window_count += 1
+        self._append_runtime_window_position(meta)
+        return window
+
+    def _append_runtime_window_position(self, meta: FloorMeta) -> None:
+        layout = meta.layout if isinstance(meta.layout, dict) else {}
+        positions = layout.get("window_positions")
+        if not isinstance(positions, list) or not positions:
+            return
+        step = 4
+        if len(positions) >= 2:
+            step = positions[-1][0] - positions[-2][0]
+        last_x, last_y = positions[-1]
+        positions.append([last_x + step, last_y])
+
+    def _open_windows(self) -> list[Window]:
         # B1：只在开放窗口中选；关停窗口不接收新学生（已排队的自然 drain）。
         open_windows = [w for w in self.windows if w.is_open]
         if not open_windows:
             raise RuntimeError(f"Canteen {self.id!r}: no open window")
-        return min(open_windows, key=lambda w: w.queue_load)
+        return open_windows
+
+    def shortest_window(self) -> Window:
+        return min(self._open_windows(), key=lambda w: w.queue_load)
+
+    def floor_ids_with_open_windows(self) -> list[int]:
+        return sorted({w.floor_id for w in self._open_windows()})
+
+    def _random_choice(self, items: list, rng=None):
+        source = rng if rng is not None else random
+        return source.choice(items)
+
+    def choose_initial_floor(self, rng=None) -> int:
+        """学生进入食堂后的初始楼层：在开放楼层中真随机抽样。"""
+        floor_ids = self.floor_ids_with_open_windows()
+        return self._random_choice(floor_ids, rng)
+
+    def stair_travel_time(self, from_floor_id: int, target_floor_id: int) -> float:
+        """同一食堂内通过楼梯换层的通行时间。"""
+        return max(
+            self.STAIR_TRAVEL_SECONDS_PER_FLOOR,
+            abs(int(target_floor_id) - int(from_floor_id))
+            * self.STAIR_TRAVEL_SECONDS_PER_FLOOR,
+        )
+
+    def choose_window(self, rng=None, current_floor_id: Optional[int] = None) -> Window:
+        """学生实际选择窗口：在当前楼层开放窗口中真随机抽样。"""
+        open_windows = self._open_windows()
+        current_floor_windows = [
+            w for w in open_windows
+            if current_floor_id is not None and w.floor_id == current_floor_id
+        ]
+        candidate_windows = current_floor_windows or open_windows
+        return self._random_choice(candidate_windows, rng)
+
+    def start_floor_transfer(self, student: "Student", from_floor_id: int, target_floor_id: int):
+        student.current_floor_id = from_floor_id
+        student.target_floor_id = target_floor_id
+        student.floor_switch_start_time = self.env.now
+        student.floor_switch_duration = self.stair_travel_time(from_floor_id, target_floor_id)
+        if student not in self.floor_transit_students:
+            self.floor_transit_students.append(student)
+
+    def finish_floor_transfer(self, student: "Student"):
+        if student in self.floor_transit_students:
+            self.floor_transit_students.remove(student)
 
     def join_seat_queue(self, student: "Student"):
         self.seat_waiting_students.append(student)
@@ -193,6 +286,14 @@ class Canteen:
     def leave_seat_queue(self, student: "Student"):
         if student in self.seat_waiting_students:
             self.seat_waiting_students.remove(student)
+
+    def get_seat_prefer_floor(self, floor_id: Optional[int]):
+        """取座位：同楼层有空座时优先同楼层，否则换到任意可用楼层。"""
+        if floor_id is not None and any(
+            seat.floor_id == floor_id for seat in self.seat_pool.items
+        ):
+            return self.seat_pool.get(lambda seat: seat.floor_id == floor_id)
+        return self.seat_pool.get()
 
     @property
     def seat_waiting_count(self) -> int:
@@ -203,8 +304,7 @@ class Canteen:
 
         ``floors[].windows / seats / students`` 是对 flat 字段按 ``floor_id``
         的分区：每个 Window/Seat 在 ``__init__`` 时被赋了整数 ``floor_id``，
-        分别归入对应楼层；学生中"等座"状态因不绑定楼层用 ``floor_id=None``，
-        因此除等座学生外，flat 与 ``sum(floors[].*)`` 形成完整分区，不应丢失或重复。
+        分别归入对应楼层；等座学生沿用刚服务的楼层，供前端显示在原楼层等座区。
         """
         flat_windows = [
             {
@@ -213,6 +313,10 @@ class Canteen:
                 "queue_length": w.queue_length,
                 "is_serving": w.current_serving is not None,
                 "total_served": w.total_served,
+                "is_open": w.is_open,
+                "closing": (not w.is_open) and (
+                    w.queue_length > 0 or w.current_serving is not None
+                ),
             }
             for w in self.windows
         ]
@@ -244,7 +348,22 @@ class Canteen:
         for idx, s in enumerate(self.seat_waiting_students):
             students.append({
                 "id": s.id, "position": "waiting_queue", "position_detail": idx,
-                "floor_id": None,   # 等座学生不绑定具体楼层
+                "floor_id": s.current_floor_id,
+            })
+        for s in self.floor_transit_students:
+            duration = max(0.001, getattr(s, "floor_switch_duration", 0.0) or 0.0)
+            progress = min(
+                1.0,
+                max(0.0, (self.env.now - getattr(s, "floor_switch_start_time", self.env.now)) / duration),
+            )
+            students.append({
+                "id": s.id,
+                "position": "floor_switching",
+                "position_detail": "stairs",
+                "floor_id": s.current_floor_id,
+                "from_floor_id": s.current_floor_id,
+                "target_floor_id": s.target_floor_id,
+                "floor_switch_progress": progress,
             })
         for seat in self.seats:
             if seat.student:
@@ -256,8 +375,7 @@ class Canteen:
 
         # 嵌套形状：按 floor_id 分组
         # 不变量：每个 Window/Seat 都在 __init__ 时显式被赋了整数 floor_id；
-        # 学生中"等座"状态因不绑定楼层用 None，因此不会被任何 floor 块收编。
-        # flat[*] 与 sum(floors[].*) 形成完全分区（除等座学生外）。
+        # 学生按当前窗口、等座楼层或座位楼层收编到对应 floor 块。
         floors_block = []
         for meta in self.floors_meta:
             fid = meta.floor_id

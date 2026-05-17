@@ -33,6 +33,9 @@ navLinks.forEach(link => {
 });
 
 function showPage(name) {
+    if (name !== 'simulation') {
+        stopLoop();
+    }
     pages.forEach(p => p.classList.toggle('active', p.id === `${name}-page`));
     navLinks.forEach(l => l.classList.toggle('active', l.dataset.page === name));
     if (name === 'history') loadHistoryList();
@@ -71,7 +74,9 @@ resetBtn.addEventListener('click', () => {
     state.pendingCanteens = [];
     state.campusPresetScale = null;
     const singleModeRadio = document.getElementById('simulation-mode-single');
-    if (singleModeRadio) singleModeRadio.checked = true;
+    const campusModeRadio = document.getElementById('simulation-mode-campus');
+    if (singleModeRadio) singleModeRadio.checked = false;
+    if (campusModeRadio) campusModeRadio.checked = true;
     renderPendingDataNote([]);
     syncModeForms();
 });
@@ -89,10 +94,10 @@ document.querySelectorAll('[data-campus-preset]').forEach(btn => {
             item.classList.toggle('active', item === btn);
         });
         try {
-            await loadDefaultCampusPreset();
+            await loadSingleCanteenPreset();
         } catch (err) {
             console.error(err);
-            alert(err.message || '校园预设加载失败');
+            alert(err.message || '单食堂预设加载失败');
         }
     });
 });
@@ -110,6 +115,7 @@ configForm.addEventListener('submit', async e => {
     const nextMode = selectedMode();
 
     try {
+        stopLoop();
         const payload = nextMode === 'campus'
             ? await getCampusConfigForSubmit()
             : readSingleConfig();
@@ -169,7 +175,7 @@ function readCampusConfig() {
     try {
         return JSON.parse(campusConfigJson.value);
     } catch (err) {
-        throw new Error('校园联合配置 JSON 格式错误');
+        throw new Error('3D 单食堂配置 JSON 格式错误');
     }
 }
 
@@ -213,8 +219,8 @@ function renderPendingDataNote(pending) {
     const node = document.getElementById('pending-data-note');
     if (!node) return;
     node.textContent = pending.length
-        ? `待补数据：${pending.join(', ')}。演示中不伪造该食堂容量。`
-        : '全部食堂数据已回填。';
+        ? `未启用数据：${pending.join(', ')}。当前演示只使用单食堂。`
+        : '单食堂 3D 预设已加载。';
 }
 
 async function getCampusConfigForSubmit() {
@@ -250,15 +256,14 @@ const playPauseBtn = document.getElementById('play-pause-btn');
 const endBtn = document.getElementById('end-btn');
 const speedRange = document.getElementById('speed-range');
 const speedLabel = document.getElementById('speed-label');
-const viewSwitcher = document.getElementById('view-switcher');
-const campusOverviewPanel = document.getElementById('campus-overview-panel');
 const canteenSwitcher = document.getElementById('canteen-switcher');
-const campusMapContainer = document.getElementById('campus-map-container');
 const floorTabs = document.getElementById('floor-tabs');
 const infoPanel = document.querySelector('.info-panel');
 const renderSwitcher = document.getElementById('render-switcher');
 const threeStage = document.getElementById('three-stage');
 const SPEED_MAP = [1, 2, 5, 10];
+const FALLBACK_RENDER_MODE = '2d';
+let tickInFlight = false;
 
 function rendererDeps() {
     return { canvas, ctx, state };
@@ -268,17 +273,20 @@ function chartDeps() {
     return { document, echarts, state };
 }
 
-if (viewSwitcher) {
-    viewSwitcher.querySelectorAll('button[data-view]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            state.view = btn.dataset.view;
-            applyViewState();
-            if (state.lastData && window.CanteenApp.refreshCampusView) {
-                window.CanteenApp.refreshCampusView(state.lastData);
-            }
-        });
-    });
-}
+window.addEventListener('canteen:three-fallback', () => {
+    if (state.mode !== 'campus' || state.renderMode !== '3d') return;
+    state.renderMode = FALLBACK_RENDER_MODE;
+    applyViewState();
+    if (state.lastData && window.CanteenApp.refreshCampusView) {
+        window.CanteenApp.refreshCampusView(state.lastData);
+        return;
+    }
+    if (state.lastData) {
+        updateInfoPanel(campusInfoPanelData(state.lastData));
+        const activeCanteen = activeCanteenSnapshot(state.lastData);
+        if (activeCanteen) drawCanteen(activeCanteen);
+    }
+});
 
 if (renderSwitcher) {
     renderSwitcher.querySelectorAll('button[data-render]').forEach(btn => {
@@ -291,7 +299,10 @@ if (renderSwitcher) {
                 window.CanteenApp3D
             ) {
                 window.CanteenApp3D.init(threeStage);
-                window.CanteenApp3D.render(state.lastData, state);
+                window.CanteenApp3D.render(state.lastData, {
+                    ...state,
+                    onFinishSimulation: finishSimulation,
+                });
             } else if (state.lastData && window.CanteenApp.refreshCampusView) {
                 window.CanteenApp.refreshCampusView(state.lastData);
             }
@@ -310,7 +321,9 @@ playPauseBtn.addEventListener('click', () => {
     }
 });
 
-endBtn.addEventListener('click', async () => {
+endBtn.addEventListener('click', finishSimulation);
+
+async function finishSimulation() {
     stopLoop();
     endBtn.disabled = true;
     playPauseBtn.disabled = true;
@@ -324,7 +337,7 @@ endBtn.addEventListener('click', async () => {
         const res = await fetch(`${API_BASE}${finishPath}`, { method: 'POST' });
         if (!res.ok) {
             alert('结束仿真失败，请检查后端日志');
-            return;
+            return false;
         }
         let stats = await res.json();
         if (state.mode === 'campus') {
@@ -333,16 +346,18 @@ endBtn.addEventListener('click', async () => {
         }
         showPage('analysis');
         showStatistics(stats);
+        return true;
     } catch (err) {
         console.error(err);
         alert('无法连接后端服务');
+        return false;
     } finally {
         endBtn.textContent = prevLabel;
         endBtn.disabled = false;
         playPauseBtn.disabled = false;
         playPauseBtn.textContent = '开始';
     }
-});
+}
 
 speedRange.addEventListener('input', () => {
     state.speed = SPEED_MAP[speedRange.value];
@@ -383,6 +398,8 @@ function stopLoop() {
 }
 
 async function tick() {
+    if (tickInFlight) return;
+    tickInFlight = true;
     try {
         const data = await dispatchStep();
         if (data.is_ended) {
@@ -393,6 +410,8 @@ async function tick() {
     } catch (err) {
         console.error(err);
         stopLoop();
+    } finally {
+        tickInFlight = false;
     }
 }
 
@@ -412,7 +431,10 @@ async function dispatchStep() {
         }
         if (state.renderMode === '3d' && window.CanteenApp3D) {
             window.CanteenApp3D.init(threeStage);
-            window.CanteenApp3D.render(data, state);
+            window.CanteenApp3D.render(data, {
+                ...state,
+                onFinishSimulation: finishSimulation,
+            });
         } else if (window.CanteenApp.refreshCampusView) {
             window.CanteenApp.refreshCampusView(data);
         } else {
@@ -434,22 +456,13 @@ function currentSimulationBase() {
 
 function applyViewState() {
     const isCampusMode = state.mode === 'campus';
-    const isCampusView = isCampusMode && state.view === 'campus';
     const is3D = isCampusMode && state.renderMode === '3d';
-    if (viewSwitcher) viewSwitcher.hidden = !isCampusMode;
     if (renderSwitcher) renderSwitcher.hidden = !isCampusMode;
-    if (campusOverviewPanel) campusOverviewPanel.hidden = !isCampusView;
-    if (canteenSwitcher) canteenSwitcher.hidden = !isCampusMode || isCampusView || is3D;
-    if (campusMapContainer) campusMapContainer.hidden = !isCampusView || is3D;
+    if (canteenSwitcher) canteenSwitcher.hidden = true;
     if (threeStage) threeStage.hidden = !is3D;
-    if (canvas) canvas.hidden = isCampusView || is3D;
-    if (floorTabs) floorTabs.hidden = !isCampusMode || isCampusView || is3D;
-    if (infoPanel) infoPanel.hidden = isCampusView || is3D;
-    if (viewSwitcher) {
-        viewSwitcher.querySelectorAll('button[data-view]').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.view === state.view);
-        });
-    }
+    if (canvas) canvas.hidden = is3D;
+    if (floorTabs) floorTabs.hidden = !isCampusMode || is3D;
+    if (infoPanel) infoPanel.hidden = is3D;
     if (renderSwitcher) {
         renderSwitcher.querySelectorAll('button[data-render]').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.render === state.renderMode);
@@ -602,7 +615,7 @@ function updateScenarioActionState() {
     if (!scenarioRunBtn) return;
     if (state.mode !== 'single') {
         scenarioRunBtn.disabled = true;
-        setScenarioStatus('校园联合模式暂不自动重跑，建议先查看当前诊断和分流指标。');
+        setScenarioStatus('3D 单食堂模式暂不自动重跑，建议先查看当前诊断和干预指标。');
         return;
     }
     if (!state.lastStatistics || !state.lastSingleConfig) {
@@ -734,6 +747,35 @@ async function loadHistoryDetail(configId) {
     }
 }
 
+function extractHistoryInterventionEvents(snapshots) {
+    const seen = new Set();
+    const events = [];
+    (snapshots || []).forEach(snapshot => {
+        (snapshot.interventions || []).forEach(event => {
+            if (event.event_type
+                && event.event_type !== 'window_toggle'
+                && event.event_type !== 'window_add') return;
+            const key = event.event_id !== undefined && event.event_id !== null
+                ? `id:${event.event_id}`
+                : [
+                    event.time ?? snapshot.current_time,
+                    event.canteen_id,
+                    event.window_id,
+                    event.action,
+                    event.status,
+                    event.reason,
+                ].join('|');
+            if (seen.has(key)) return;
+            seen.add(key);
+            events.push({
+                ...event,
+                time: event.time ?? snapshot.current_time,
+            });
+        });
+    });
+    return events.sort((a, b) => (a.time || 0) - (b.time || 0));
+}
+
 function renderHistoryDetail(configId, snapshots) {
     historyDetail.hidden = false;
     historyDetailTitle.textContent = `配置 #${configId} —— 共 ${snapshots.length} 条快照`;
@@ -746,6 +788,7 @@ function renderHistoryDetail(configId, snapshots) {
     const served = snapshots.map(s => historyTotals(s).total_served);
     const queue = snapshots.map(s => historyTotals(s).total_in_queue);
     const eating = snapshots.map(s => historyTotals(s).total_eating);
+    const interventionEvents = extractHistoryInterventionEvents(snapshots);
 
     state.historyChart.setOption({
         tooltip: { trigger: 'axis' },
@@ -756,7 +799,28 @@ function renderHistoryDetail(configId, snapshots) {
         series: [
             { name: '累计到达', type: 'line', smooth: true, data: arrived, itemStyle: { color: '#b91c1c' } },
             { name: '完成就餐', type: 'line', smooth: true, data: served, itemStyle: { color: '#10b981' } },
-            { name: '排队人数', type: 'line', smooth: true, data: queue, itemStyle: { color: '#ff9800' } },
+            {
+                name: '排队人数',
+                type: 'line',
+                smooth: true,
+                data: queue,
+                itemStyle: { color: '#ff9800' },
+                markLine: interventionEvents.length ? {
+                    symbol: 'none',
+                    data: interventionEvents.map(event => ({
+                        xAxis: +((Number(event.time) || 0) / 60).toFixed(2),
+                        name: '干预',
+                        label: {
+                            formatter: event.action === 'add' ? '添加窗口'
+                                : (event.action === 'open' ? '增开窗口' : '关窗'),
+                        },
+                        lineStyle: {
+                            color: event.status === 'rejected' ? '#9ca3af' : '#7c3aed',
+                            type: 'dashed',
+                        },
+                    })),
+                } : undefined,
+            },
             { name: '正在就餐', type: 'line', smooth: true, data: eating, itemStyle: { color: '#ef4444' } },
         ],
     });

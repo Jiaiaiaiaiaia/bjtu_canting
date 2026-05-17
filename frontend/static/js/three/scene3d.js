@@ -43,6 +43,18 @@ let raycaster = null;
 const pointer = new THREE.Vector2();
 let lastAppState = null;
 
+// Default 3D entry should frame the canteen building first; the ground grid is
+// only a compact spatial reference, not the dominant foreground.
+const STAGE_GROUND_WIDTH = 440;
+const STAGE_GROUND_DEPTH = 240;
+const STAGE_GRID_SIZE = 420;
+const STAGE_GRID_DIVISIONS = 12;
+const STAGE_GRID_DEPTH_SCALE = 0.55;
+const STAGE_FLOOR_OPACITY = 0.42;
+const STAGE_GRID_OPACITY = 0.0;
+const STAGE_CENTER_X = 160;
+const STAGE_CENTER_Z = 48;
+
 function init(container) {
     if (!container) return;
     if (!webglAvailable) {
@@ -56,10 +68,10 @@ function init(container) {
     dispose();
     containerEl = container;
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x07111d);
+    scene.background = new THREE.Color(0x0b1521);
 
     camera = new THREE.PerspectiveCamera(48, 16 / 9, 0.1, 4000);
-    camera.position.set(260, 260, 520);
+    camera.position.set(160, 246, 360);
 
     try {
         renderer = new THREE.WebGLRenderer({
@@ -80,32 +92,47 @@ function init(container) {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
 
-    scene.fog = new THREE.Fog(0x07111d, 520, 2200);
+    scene.fog = new THREE.Fog(0x0b1521, 680, 2600);
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.target.set(160, 0, 120);
+    controls.target.set(160, 76, STAGE_CENTER_Z);
 
-    const hemi = new THREE.HemisphereLight(0xeef6f4, 0x1c2b3c, 2.1);
+    const hemi = new THREE.HemisphereLight(0xe6f3ef, 0x22364a, 1.38);
     scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffffff, 2.4);
+    const sun = new THREE.DirectionalLight(0xf0eee5, 1.24);
     sun.position.set(160, 420, 260);
     sun.castShadow = true;
     scene.add(sun);
-    const teal = new THREE.PointLight(0x52d6d1, 1.2, 800);
+    const teal = new THREE.PointLight(0x54cfc7, 0.32, 520);
     teal.position.set(160, 180, 120);
     scene.add(teal);
 
     const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(640, 460),
-        new THREE.MeshStandardMaterial({ color: 0x123044, roughness: 0.92 })
+        new THREE.PlaneGeometry(STAGE_GROUND_WIDTH, STAGE_GROUND_DEPTH),
+        new THREE.MeshStandardMaterial({
+            color: 0x123044,
+            roughness: 0.92,
+            transparent: true,
+            opacity: STAGE_FLOOR_OPACITY,
+        })
     );
+    floor.name = 'subtle stage floor';
     floor.rotation.x = -Math.PI / 2;
-    floor.position.set(160, -2, 120);
+    floor.position.set(STAGE_CENTER_X, -4, STAGE_CENTER_Z);
+    floor.material.depthWrite = false;
+    floor.receiveShadow = false;
+    floor.castShadow = false;
     scene.add(floor);
 
-    const grid = new THREE.GridHelper(640, 32, 0x2dd4bf, 0x315467);
-    grid.position.set(160, 0, 120);
+    const grid = new THREE.GridHelper(STAGE_GRID_SIZE, STAGE_GRID_DIVISIONS, 0x2dd4bf, 0x315467);
+    grid.name = 'subtle stage grid';
+    grid.material.transparent = true;
+    grid.material.opacity = STAGE_GRID_OPACITY;
+    grid.material.depthWrite = false;
+    grid.visible = STAGE_GRID_OPACITY > 0;
+    grid.scale.z = STAGE_GRID_DEPTH_SCALE;
+    grid.position.set(STAGE_CENTER_X, -3.8, STAGE_CENTER_Z);
     scene.add(grid);
 
     contentGroup = new THREE.Group();
@@ -120,6 +147,7 @@ function init(container) {
     interventionUI.onSnapshot = snapshot => {
         if (snapshot && lastAppState) render(snapshot, lastAppState);
     };
+    interventionUI.onFinish = () => lastAppState?.onFinishSimulation?.();
 
     raycaster = new THREE.Raycaster();
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
@@ -130,9 +158,25 @@ function init(container) {
     immersiveUI = new ImmersiveUI();
     immersiveUI.mount(container);
     sceneApi = {
-        focusFloor(id) { canteenScene?.focusFloor?.(id); },
-        resetView()    { canteenScene?.resetView?.(); },
-        resetCamera()  { canteenScene?.resetView?.(); },
+        focusFloor(id) {
+            canteenScene?.focusFloor?.(id);
+            syncImmersiveUI();
+        },
+        resetView() {
+            canteenScene?.resetView?.();
+            syncImmersiveUI();
+        },
+        resetCamera()  {
+            canteenScene?.resetView?.();
+            syncImmersiveUI();
+        },
+        getMode() { return canteenScene?.mode || 'overview'; },
+        getFocusFloorId() { return canteenScene?.focusFloorId ?? null; },
+        getViewPreset() { return canteenScene?.viewPreset || 'overview'; },
+        setViewPreset(id) {
+            canteenScene?.setViewPreset?.(id);
+            syncImmersiveUI();
+        },
         setCutaway(b)  {
             if (!canteenScene) return;
             canteenScene.cutaway = !!b;
@@ -149,6 +193,10 @@ function init(container) {
     animate();
 }
 
+function syncImmersiveUI() {
+    immersiveUI?.update?.(canteenScene?.lastFrame || null, sceneApi);
+}
+
 // 点选：命中楼层/学生 → 进 FOCUS / 点名追踪；空白 → 回 A 总览。
 function onPointerDown(event) {
     if (!canteenScene || !renderer || !camera) return;
@@ -159,15 +207,15 @@ function onPointerDown(event) {
     const hits = raycaster.intersectObjects(canteenScene.group.children, true);
     const hit = hits.find(h => h.object?.userData?.kind);
     if (!hit) {
-        canteenScene.resetView();
+        sceneApi?.resetView?.();
         return;
     }
     const data = hit.object.userData;
     if (data.kind === 'student') {
         canteenScene.trackStudent(data.studentId);
-        canteenScene.focusFloor(data.floorId);
+        sceneApi?.focusFloor?.(data.floorId);
     } else if (data.floorId != null) {
-        canteenScene.focusFloor(data.floorId);
+        sceneApi?.focusFloor?.(data.floorId);
     }
 }
 
@@ -184,13 +232,14 @@ function resize() {
 function showFallback(container) {
     if (!container) return;
     container.innerHTML = '<div class="three-fallback">当前环境无法创建 WebGL 上下文，已保留 2D 视图。</div>';
+    window.dispatchEvent(new CustomEvent('canteen:three-fallback'));
 }
 
 function animate() {
     if (!renderer || !scene || !camera) return;
     requestAnimationFrame(animate);
-    // 单食堂 FOCUS/总览相机与楼层滑开动画由 CanteenScene 推进（位置已由
-    // StateAdapter 插值，这里只推进相机/层位移逼近）。
+    // 单食堂 FOCUS/总览相机与楼层可见性由 CanteenScene 推进（位置已由
+    // StateAdapter 插值，这里只推进相机/楼层显示状态）。
     if (canteenScene && lastAppState?.view === 'canteen') {
         canteenScene.tick();
     }
@@ -223,8 +272,8 @@ function material(color, options = {}) {
     });
 }
 
-// campus 多食堂总览路径保留（含 visibleCanteens / pendingCanteens 处理），
-// 旧校园联合演示/手动入口仍可用；单食堂 3D 主体验走 renderCanteen 委派。
+// 兼容总览路径保留（含 visibleCanteens / pendingCanteens 处理），
+// 手动 JSON 入口仍可回放旧 snapshot；单食堂 3D 主体验走 renderCanteen 委派。
 function markerEntries(snapshot, appState) {
     const runtime = snapshot?.canteens || {};
     const visibleCanteens = Array.isArray(appState?.visibleCanteens)

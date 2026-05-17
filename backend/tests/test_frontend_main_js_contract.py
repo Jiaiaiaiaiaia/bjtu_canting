@@ -74,6 +74,16 @@ def test_main_js_dispatches_step_by_mode():
     assert 'const data = await dispatchStep();' in MAIN_JS
 
 
+def test_main_js_stops_background_loop_before_leaving_simulation_page():
+    s = MAIN.read_text(encoding="utf-8")
+    assert "if (name !== 'simulation') {" in s
+    assert "stopLoop();" in s
+    assert "let tickInFlight = false;" in s
+    assert "if (tickInFlight) return;" in s
+    assert "tickInFlight = true;" in s
+    assert "tickInFlight = false;" in s
+
+
 def test_main_js_keeps_single_canteen_draw_helpers_available():
     for helper in ('drawWindows', 'drawSeats', 'drawStudentDots'):
         assert f'function {helper}(' in MAIN_JS
@@ -139,6 +149,19 @@ def test_main_js_exposes_scenario_helpers_for_contract_testing():
         assert snippet in MAIN_JS
 
 
+def test_history_detail_marks_campus_intervention_events_on_queue_curve():
+    for snippet in (
+        "function extractHistoryInterventionEvents(snapshots)",
+        "const interventionEvents = extractHistoryInterventionEvents(snapshots);",
+        "markLine: interventionEvents.length ?",
+        "干预",
+        "window_toggle",
+        "window_add",
+        "event.action === 'add' ? '添加窗口'",
+    ):
+        assert snippet in MAIN_JS
+
+
 MAIN = REPO_ROOT / 'frontend' / 'static' / 'js' / 'main.js'
 
 
@@ -167,3 +190,15 @@ def test_sync_immersive_shell_wired_and_no_2d_literal():
     assert av and "syncImmersiveShell()" in av.group(0), "applyViewState must call syncImmersiveShell"
     assert "renderMode: '2d'" not in s
     assert "state.renderMode = '2d';" not in s
+
+
+def test_main_js_restores_2d_when_three_fallback_fires():
+    s = MAIN.read_text(encoding="utf-8")
+    for snippet in (
+        "const FALLBACK_RENDER_MODE = '2d';",
+        "window.addEventListener('canteen:three-fallback'",
+        "state.renderMode = FALLBACK_RENDER_MODE;",
+        "applyViewState();",
+        "window.CanteenApp.refreshCampusView(state.lastData);",
+    ):
+        assert snippet in s

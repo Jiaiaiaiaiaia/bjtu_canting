@@ -17,9 +17,40 @@
             return windowServed.map((value, i) => ({ name: `窗口 ${i + 1}`, value }));
         }
         if (!windowServed || typeof windowServed !== 'object') return [];
-        return Object.entries(windowServed).flatMap(([canteenId, values]) =>
-            (values || []).map((value, i) => ({ name: `${canteenId} 窗口 ${i + 1}`, value }))
-        );
+        let offset = 0;
+        return Object.values(windowServed).flatMap(values => {
+            const items = (values || []).map((value, i) => ({ name: `窗口 ${offset + i + 1}`, value }));
+            offset += items.length;
+            return items;
+        });
+    }
+
+    function buildWindowServiceShare(windowSeries, limit = 6) {
+        const items = (windowSeries || [])
+            .map(item => ({ name: item.name, rawValue: toNumber(item.value) }))
+            .filter(item => item.rawValue > 0);
+        const total = items.reduce((sum, item) => sum + item.rawValue, 0);
+        if (total <= 0) return [];
+
+        const visibleLimit = Math.max(1, Math.floor(toNumber(limit, 12)));
+        const sorted = [...items].sort((a, b) => b.rawValue - a.rawValue);
+        const visible = sorted.slice(0, visibleLimit);
+        const hidden = sorted.slice(visibleLimit);
+        const shareItems = visible.map(item => ({
+            ...item,
+            value: +((item.rawValue / total) * 100).toFixed(1),
+        }));
+
+        if (hidden.length) {
+            const otherValue = hidden.reduce((sum, item) => sum + item.rawValue, 0);
+            shareItems.push({
+                name: '其余窗口',
+                rawValue: otherValue,
+                value: +((otherValue / total) * 100).toFixed(1),
+            });
+        }
+
+        return shareItems;
     }
 
     function toNumber(value, fallback = 0) {
@@ -31,6 +62,11 @@
         const value = toNumber(seconds);
         if (value >= 60) return `${(value / 60).toFixed(1)} min`;
         return `${value.toFixed(1)} s`;
+    }
+
+    function formatMinutes(seconds) {
+        const value = toNumber(seconds);
+        return `${(value / 60).toFixed(1)} 分`;
     }
 
     function formatPercent(value) {
@@ -55,6 +91,75 @@
         const minute = toNumber(x[peakIndex]);
         const minuteText = Number.isInteger(minute) ? String(minute) : minute.toFixed(1);
         return { value: peakValue, timeText: `${minuteText} 分` };
+    }
+
+    function buildTimelineInsight(stats) {
+        stats = stats || {};
+        const totalArrived = toNumber(stats.total_arrived);
+        if (totalArrived <= 0) {
+            return {
+                badge: '等待数据',
+                summary: '完成仿真后显示高峰排队、平均等待和座位峰值。',
+            };
+        }
+
+        const queuePeak = findPeakPoint(stats.queue_timeline);
+        const seatPeak = findPeakPoint(stats.seat_util_timeline);
+        const peakQueue = Math.max(toNumber(stats.peak_queue_length), queuePeak.value);
+        const seatPeakValue = Math.max(toNumber(stats.seat_utilization), seatPeak.value);
+        const peakTime = queuePeak.timeText === '暂无数据' ? '结束时' : queuePeak.timeText;
+
+        return {
+            badge: peakQueue > 0 ? `高峰 ${peakTime}` : '低排队',
+            summary: `峰值排队 ${Math.round(peakQueue)} 人，平均等待 ${formatSeconds(stats.avg_waiting_time)}，座位最高 ${formatPercent(seatPeakValue)}。`,
+        };
+    }
+
+    function buildWindowLoadInsight(windowSeries) {
+        const items = (windowSeries || [])
+            .map(item => ({ name: item.name, value: toNumber(item.value) }));
+        if (!items.length) {
+            return {
+                badge: '等待数据',
+                summary: '完成仿真后显示最忙和最空窗口。',
+                top: [],
+                bottom: [],
+            };
+        }
+
+        const total = items.reduce((sum, item) => sum + item.value, 0);
+        const average = total / Math.max(items.length, 1);
+        const top = [...items].sort((a, b) => b.value - a.value).slice(0, Math.min(5, items.length));
+        const bottom = [...items].sort((a, b) => a.value - b.value).slice(0, Math.min(3, items.length));
+        const busiest = top[0] || { name: '暂无', value: 0 };
+        const emptiest = bottom[0] || { name: '暂无', value: 0 };
+        const imbalance = busiest.value > average * 1.5 || (emptiest.value === 0 && busiest.value > 0);
+
+        return {
+            badge: imbalance ? '负载不均' : '负载均衡',
+            summary: `最忙 ${busiest.name} 服务 ${Math.round(busiest.value)} 人，最空 ${emptiest.name} 服务 ${Math.round(emptiest.value)} 人。`,
+            top,
+            bottom,
+        };
+    }
+
+    function buildSeatTrendInsight(stats) {
+        stats = stats || {};
+        const seatPeak = findPeakPoint(stats.seat_util_timeline);
+        const peakValue = Math.max(toNumber(stats.seat_utilization), seatPeak.value);
+        const peakTime = seatPeak.timeText === '暂无数据' ? '结束时' : seatPeak.timeText;
+
+        if (toNumber(stats.total_arrived) <= 0 && peakValue <= 0) {
+            return {
+                badge: '等待数据',
+                summary: '完成仿真后显示座位使用峰值。',
+            };
+        }
+
+        return {
+            badge: peakValue >= 85 ? '座位紧张' : (peakValue >= 70 ? '接近上限' : '座位充足'),
+            summary: `最高 ${formatPercent(peakValue)}，峰值出现在 ${peakTime}。`,
+        };
     }
 
     function buildDiagnosis(stats) {
@@ -110,10 +215,6 @@
         if (unfinished > 0) {
             summary += ` 仍有 ${unfinished} 人未完成服务，方案对比时建议先结束仿真。`;
         }
-        if (stats.switch_rate !== undefined) {
-            summary += ` 跨食堂改派率 ${formatPercent(toNumber(stats.switch_rate) * 100)}。`;
-        }
-
         return {
             level,
             levelClass,
@@ -135,7 +236,6 @@
         const peakQueue = toNumber(stats.peak_queue_length);
         const avgWait = toNumber(stats.avg_waiting_time);
         const seatUtilization = toNumber(stats.seat_utilization);
-        const switchRate = toNumber(stats.switch_rate, -1);
 
         if (totalArrived <= 0) {
             return [{
@@ -170,16 +270,6 @@
             });
         }
 
-        if (switchRate >= 0.2) {
-            interventions.push({
-                title: '优化跨食堂分流',
-                tag: '校园路由',
-                impact: `改派率 ${formatPercent(switchRate * 100)}；可调低高峰入口权重或强化实时队长信息，减少无效迁移。`,
-                tone: 'medium',
-                priority: 8,
-            });
-        }
-
         if (!interventions.length) {
             interventions.push({
                 title: '保持当前配置',
@@ -194,6 +284,61 @@
             .sort((a, b) => b.priority - a.priority)
             .slice(0, 3)
             .map(withoutPriority);
+    }
+
+    function actionLabel(action) {
+        if (action === 'add') return '添加窗口';
+        if (action === 'open') return '增开窗口';
+        if (action === 'close') return '关窗';
+        return '窗口调整';
+    }
+
+    function queueDeltaText(delta) {
+        const value = toNumber(delta);
+        if (Math.abs(value) < 0.5) return '平均排队基本持平';
+        if (value < 0) return `平均排队下降 ${Math.abs(value).toFixed(1)} 人`;
+        return `平均排队上升 ${value.toFixed(1)} 人`;
+    }
+
+    function buildInterventionEffects(stats) {
+        stats = stats || {};
+        const analysis = stats.intervention_analysis || {};
+        const events = Array.isArray(analysis.events) ? analysis.events : [];
+        if (!events.length) {
+            return {
+                summary: analysis.summary || '暂无已记录干预事件',
+                items: [{
+                    title: '暂无干预事件',
+                    tag: '待数据',
+                    impact: '运行中开关窗口后显示队列和服务变化。',
+                    tone: 'neutral',
+                }],
+            };
+        }
+
+        return {
+            summary: analysis.summary || `已记录 ${events.length} 次窗口干预。`,
+            items: events.slice(-4).map(event => {
+                const floor = event.floor_id !== undefined && event.floor_id !== null
+                    ? `${event.floor_id}F `
+                    : '';
+                const windowText = event.window_id !== undefined && event.window_id !== null
+                    ? `窗${event.window_id}`
+                    : '窗口';
+                const status = event.status === 'rejected' ? '已拒绝' : '已执行';
+                const deltaText = queueDeltaText(event.avg_queue_delta);
+                const windowDelta = toNumber(event.open_window_delta);
+                const windowDeltaText = windowDelta
+                    ? `开放窗口 ${windowDelta > 0 ? '+' : ''}${windowDelta}`
+                    : '开放窗口不变';
+                return {
+                    title: `${floor}${windowText} ${actionLabel(event.action)}`.trim(),
+                    tag: `${status} · ${formatMinutes(event.time)}`,
+                    impact: event.summary || `${windowDeltaText}，${deltaText}。`,
+                    tone: event.verdict || (event.status === 'rejected' ? 'rejected' : 'neutral'),
+                };
+            }),
+        };
     }
 
     function cloneSingleConfig(config) {
@@ -357,6 +502,25 @@
         list.appendChild(card);
     }
 
+    function addInterventionEffectCard(doc, list, item) {
+        const card = doc.createElement('article');
+        card.className = `intervention-effect-card ${item.tone || 'neutral'}`;
+
+        const tag = doc.createElement('span');
+        tag.className = 'intervention-tag';
+        tag.textContent = item.tag;
+
+        const title = doc.createElement('strong');
+        title.textContent = item.title;
+
+        const impact = doc.createElement('p');
+        impact.className = 'intervention-impact';
+        impact.textContent = item.impact;
+
+        card.append(tag, title, impact);
+        list.appendChild(card);
+    }
+
     function renderInterventions(stats, deps) {
         const doc = deps.document;
         const list = doc.getElementById('intervention-list');
@@ -368,6 +532,17 @@
 
         const primary = interventions[0];
         setText(doc, 'intervention-summary', primary ? `建议优先：${primary.title}` : '暂无建议');
+    }
+
+    function renderInterventionEffects(stats, deps) {
+        const doc = deps.document;
+        const list = doc.getElementById('intervention-effect-list');
+        if (!list) return;
+
+        const effects = buildInterventionEffects(stats || {});
+        list.innerHTML = '';
+        effects.items.forEach(item => addInterventionEffectCard(doc, list, item));
+        setText(doc, 'intervention-effect-summary', effects.summary);
     }
 
     function renderScenarioComparison(baselineStats, adjustedStats, summary, deps) {
@@ -404,58 +579,159 @@
         });
     }
 
+    function renderAnalysisNarrative(stats, windowSeries, deps) {
+        const doc = deps.document;
+        const timeline = buildTimelineInsight(stats || {});
+        const windowLoad = buildWindowLoadInsight(windowSeries || []);
+        const seatTrend = buildSeatTrendInsight(stats || {});
+        const share = buildWindowServiceShare(windowSeries || []);
+        const totalServed = share.reduce((sum, item) => sum + toNumber(item.rawValue), 0);
+        const leadingShare = share
+            .filter(item => item.name !== '其余窗口')
+            .slice(0, 3)
+            .reduce((sum, item) => sum + toNumber(item.value), 0);
+
+        setText(doc, 'timeline-insight', timeline.summary);
+        setText(doc, 'timeline-badge', timeline.badge);
+        setText(doc, 'window-balance-summary', windowLoad.summary);
+        setText(doc, 'window-balance-badge', windowLoad.badge);
+        setText(doc, 'seat-trend-summary', seatTrend.summary);
+        setText(
+            doc,
+            'service-concentration-summary',
+            totalServed > 0
+                ? `前三个窗口承担 ${leadingShare.toFixed(1)}% 服务量，总服务 ${Math.round(totalServed)} 人。`
+                : '完成仿真后显示窗口服务是否集中。'
+        );
+    }
+
     function renderCharts(stats, deps) {
         const { document: doc, echarts, state } = deps;
+        stats = stats || {};
         disposeCharts(deps);
         renderDiagnosis(stats, deps);
         renderInterventions(stats, deps);
+        renderInterventionEffects(stats, deps);
         const windowSeries = normalizeWindowServed(stats.window_served);
+        renderAnalysisNarrative(stats, windowSeries, deps);
 
         state.charts.window = echarts.init(doc.getElementById('window-chart'));
+        const rankedWindows = [...windowSeries]
+            .map(item => ({ name: item.name, value: toNumber(item.value) }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 8)
+            .reverse();
         state.charts.window.setOption({
             tooltip: { trigger: 'axis' },
-            grid: { left: 40, right: 20, top: 20, bottom: 30 },
-            xAxis: { type: 'category', data: windowSeries.map(item => item.name) },
-            yAxis: { type: 'value' },
-            series: [{ type: 'bar', data: windowSeries.map(item => item.value), itemStyle: { color: '#b91c1c' } }],
+            grid: { left: 64, right: 38, top: 8, bottom: 18 },
+            xAxis: {
+                type: 'value',
+                axisLabel: { formatter: '{value} 人' },
+                splitLine: { lineStyle: { color: '#eef2f7' } },
+            },
+            yAxis: {
+                type: 'category',
+                data: rankedWindows.map(item => item.name),
+                axisLabel: { color: '#4b5563' },
+            },
+            series: [{
+                type: 'bar',
+                data: rankedWindows.map(item => item.value),
+                label: { show: true, position: 'right', formatter: '{c} 人' },
+                itemStyle: { color: '#dc2626', borderRadius: [0, 4, 4, 0] },
+            }],
         });
 
-        state.charts.pie = echarts.init(doc.getElementById('pie-chart'));
-        state.charts.pie.setOption({
-            tooltip: { trigger: 'item' },
-            legend: { bottom: 0 },
+        const windowShare = buildWindowServiceShare(windowSeries);
+        state.charts.windowShare = echarts.init(doc.getElementById('pie-chart'));
+        const shareData = [...windowShare].reverse();
+        state.charts.windowShare.setOption({
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: { type: 'shadow' },
+                formatter(params) {
+                    const item = params && params[0];
+                    if (!item) return '';
+                    const rawValue = item.data && item.data.rawValue !== undefined ? item.data.rawValue : 0;
+                    return `${item.name}<br/>占总服务：${item.value}%<br/>服务人数：${rawValue} 人`;
+                },
+            },
+            grid: { left: 64, right: 44, top: 8, bottom: 18 },
+            xAxis: {
+                type: 'value',
+                max: 100,
+                axisLabel: { formatter: '{value}%' },
+                splitLine: { lineStyle: { color: '#eef2f7' } },
+            },
+            yAxis: {
+                type: 'category',
+                data: shareData.map(item => item.name),
+                axisLabel: { color: '#4b5563' },
+            },
             series: [{
-                type: 'pie',
-                radius: ['40%', '70%'],
-                data: windowSeries.map(item => ({ value: item.value, name: item.name })),
+                type: 'bar',
+                data: shareData.map(item => ({ value: item.value, rawValue: item.rawValue })),
+                label: { show: true, position: 'right', formatter: '{c}%' },
+                itemStyle: { color: '#2563eb', borderRadius: [0, 4, 4, 0] },
             }],
         });
 
         const qt = stats.queue_timeline || { x: [], y: [] };
+        const st = stats.seat_util_timeline || { x: [], y: [] };
+        const timelineX = (qt.x && qt.x.length ? qt.x : st.x) || [];
         state.charts.queue = echarts.init(doc.getElementById('queue-chart'));
         state.charts.queue.setOption({
             tooltip: { trigger: 'axis' },
-            grid: { left: 40, right: 20, top: 20, bottom: 30 },
-            xAxis: { type: 'category', data: qt.x.map(x => `${x}分`) },
-            yAxis: { type: 'value' },
-            series: [{
-                type: 'line', smooth: true, data: qt.y,
-                areaStyle: { color: 'rgba(255, 152, 0, 0.2)' },
-                itemStyle: { color: '#ff9800' },
-            }],
+            legend: { top: 0, right: 0 },
+            grid: { left: 46, right: 50, top: 36, bottom: 34 },
+            xAxis: { type: 'category', data: timelineX.map(x => `${x}分`) },
+            yAxis: [
+                { type: 'value', name: '排队', min: 0 },
+                { type: 'value', name: '座位', min: 0, max: 100, axisLabel: { formatter: '{value}%' } },
+            ],
+            series: [
+                {
+                    name: '排队人数',
+                    type: 'line',
+                    smooth: true,
+                    data: qt.y || [],
+                    areaStyle: { color: 'rgba(220, 38, 38, 0.14)' },
+                    itemStyle: { color: '#dc2626' },
+                    lineStyle: { width: 2 },
+                },
+                {
+                    name: '座位利用率',
+                    type: 'line',
+                    smooth: true,
+                    yAxisIndex: 1,
+                    data: st.y || [],
+                    itemStyle: { color: '#2563eb' },
+                    lineStyle: { width: 2 },
+                },
+            ],
         });
 
-        const st = stats.seat_util_timeline || { x: [], y: [] };
         state.charts.seat = echarts.init(doc.getElementById('seat-chart'));
         state.charts.seat.setOption({
             tooltip: { trigger: 'axis', formatter: '{b}：{c}%' },
-            grid: { left: 40, right: 20, top: 20, bottom: 30 },
+            grid: { left: 42, right: 18, top: 8, bottom: 24 },
             xAxis: { type: 'category', data: st.x.map(x => `${x}分`) },
-            yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
+            yAxis: {
+                type: 'value',
+                max: 100,
+                axisLabel: { formatter: '{value}%' },
+                splitLine: { lineStyle: { color: '#eef2f7' } },
+            },
             series: [{
                 type: 'line', smooth: true, data: st.y,
-                areaStyle: { color: 'rgba(76, 175, 80, 0.25)' },
-                itemStyle: { color: '#4CAF50' },
+                areaStyle: { color: 'rgba(22, 163, 74, 0.16)' },
+                itemStyle: { color: '#16a34a' },
+                markLine: {
+                    symbol: 'none',
+                    data: [{ yAxis: 85, name: '紧张线' }],
+                    lineStyle: { color: '#f59e0b', type: 'dashed' },
+                    label: { formatter: '85%' },
+                },
             }],
         });
     }
@@ -478,12 +754,19 @@
         disposeCharts,
         resizeCharts,
         normalizeWindowServed,
+        buildWindowServiceShare,
         buildDiagnosis,
         renderDiagnosis,
         buildInterventions,
         renderInterventions,
+        buildInterventionEffects,
+        renderInterventionEffects,
         buildSuggestedSingleConfig,
         buildScenarioComparison,
         renderScenarioComparison,
+        buildTimelineInsight,
+        buildWindowLoadInsight,
+        buildSeatTrendInsight,
+        renderAnalysisNarrative,
     };
 })();

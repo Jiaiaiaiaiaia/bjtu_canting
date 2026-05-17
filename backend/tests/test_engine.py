@@ -164,6 +164,16 @@ class TestStatistics:
         assert stats['avg_service_time'] >= 0
         assert stats['avg_eating_time'] >= 60
 
+    def test_seat_timeline_never_reports_full_capacity(self, engine):
+        engine.start()
+        for _ in range(20000):
+            st = engine.step()
+            if st['is_ended']:
+                break
+        stats = engine.get_statistics()
+        assert 0 <= stats['seat_utilization'] < 100
+        assert max(stats['seat_util_timeline']['y']) < 100
+
     def test_timelines_have_data(self, engine):
         engine.start()
         for _ in range(20000):

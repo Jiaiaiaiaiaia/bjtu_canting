@@ -13,6 +13,8 @@ DEMO_CAMPUS_OVERRIDES = {
     "peak_window_minutes": 20,
     "simulation_seconds": 300,
 }
+SINGLE_CANTEEN_DEMO_SECONDS = 3600
+SINGLE_CANTEEN_STUDENTS_PER_OBSERVED_QUEUE = 24
 FIELD_STATUS = {
     "minghu_xueyi": {
         "data_status": "field_collected_pending_review",
@@ -57,6 +59,18 @@ def _demo_campus_config(campus: dict) -> tuple[dict, dict]:
     return demo, source_scale
 
 
+def _single_canteen_demo_total_students(canteen: dict) -> int:
+    """Field-calibrated demo crowd scale, not source campus enrollment.
+
+    The current Minghu field note records ``observed_peak_queue=25``. With the
+    one-hour shaped-arrival demo, 24 synthetic students per observed queued
+    student keeps the deterministic seed near that field-observed queue scale
+    while still producing a visible lunch peak.
+    """
+    observed_peak_queue = int(canteen.get("observed_peak_queue") or 0)
+    return max(300, observed_peak_queue * SINGLE_CANTEEN_STUDENTS_PER_OBSERVED_QUEUE)
+
+
 def load_default_campus_preset() -> dict:
     campus = _read_json(PRESET_DIR / "_campus.json")
     campus, source_scale = _demo_campus_config(campus)
@@ -94,21 +108,20 @@ def load_default_campus_preset() -> dict:
 
 
 def load_single_canteen_preset() -> dict:
-    """N=1 单食堂（明湖学一 3 层）；envelope 与 load_default_campus_preset 完全一致，
+    """N=1 单食堂（明湖 3 层）；envelope 与 load_default_campus_preset 完全一致，
     前端 applyCampusPresetMetadata 零分叉。/presets/default 不动。"""
     base = load_default_campus_preset()
     minghu = next(c for c in base["config"]["canteens"]
                   if c["id"] == "minghu_xueyi")
+    single_minghu = copy.deepcopy(minghu)
     cfg = copy.deepcopy(base["config"])
-    cfg["canteens"] = [copy.deepcopy(minghu)]
+    cfg["canteens"] = [single_minghu]
     cfg["router"]["max_switches_per_student"] = 0
-    # demo 规模重标定：default 继承的 simulation_seconds=300 配明湖学一
-    # avg_eat_time=15min(900s) 会导致零学生完成，复现/演示与 C1 复现测试均空转。
-    # 实测（seed=123）：N=2400+sim=3600 时排队峰值 ≈87（远超 observed_peak_queue=25）、
-    # 座位满载，served=2128 名学生在窗口内完成；N≈1800 到达率低于窗口/座位吞吐、
-    # 队列恒为 0、无拥堵叙事。
-    cfg["campus"]["simulation_seconds"] = 3600
-    cfg["campus"]["total_students"] = 2400
+    # demo 规模重标定：default 继承的 simulation_seconds=300 配明湖
+    # avg_eat_time=15min(900s) 会导致零学生完成；旧的 N=2400 又会产生
+    # 千人级排队峰值，远超 observed_peak_queue=25 的现场观测量级。
+    cfg["campus"]["simulation_seconds"] = SINGLE_CANTEEN_DEMO_SECONDS
+    cfg["campus"]["total_students"] = _single_canteen_demo_total_students(single_minghu)
     # spec §3.5/§5.1：D3 已接线 live 路径——ArrivalGenerator 现消费
     # arrival_schedule，与 trace 共用同一 ArrivalSchedule，产生窗口内
     # 先升后落的 λ(t)：队列在 ramp/pulse 段攀升，随后在到达仍持续时于
@@ -120,7 +133,10 @@ def load_single_canteen_preset() -> dict:
         "ramp": [sim_s * 0.15, sim_s * 0.75, 1.0],
         "pulses": [[sim_s * 0.5, 0.6, sim_s * 0.08]],
     }
-    visible = [c for c in base["visible_canteens"] if c["id"] == "minghu_xueyi"]
+    visible = [
+        copy.deepcopy(c) for c in base["visible_canteens"]
+        if c["id"] == "minghu_xueyi"
+    ]
     return {
         "config": cfg,
         "visible_canteens": visible,

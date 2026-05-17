@@ -78,30 +78,170 @@ class CampusCoordinator:
     def on_student_left(self, student: Student):
         self.total_served += 1
 
+    def _floor_total_in_queue(self, canteen: Canteen | None, floor_id: int | None) -> int:
+        if canteen is None or floor_id is None:
+            return 0
+        window_queue = sum(
+            w.queue_length for w in canteen.windows if w.floor_id == floor_id
+        )
+        seat_queue = sum(
+            1 for s in canteen.seat_waiting_students
+            if s.current_floor_id == floor_id
+        )
+        return window_queue + seat_queue
+
+    def _canteen_total_in_queue(self, canteen: Canteen | None) -> int:
+        if canteen is None:
+            return 0
+        return sum(w.queue_length for w in canteen.windows) + canteen.seat_waiting_count
+
+    def _intervention_metrics(
+        self,
+        canteen: Canteen | None,
+        window,
+        floor_id: int | None = None,
+    ) -> dict:
+        floor_id = window.floor_id if window is not None else floor_id
+        return {
+            "campus_total_in_queue": self._campus_total_in_queue(),
+            "campus_total_served": self.total_served,
+            "campus_total_eating": sum(
+                1 for c in self.canteens.values()
+                for s in c.seats if s.student is not None
+            ),
+            "open_window_count": canteen.open_window_count if canteen else 0,
+            "canteen_total_in_queue": self._canteen_total_in_queue(canteen),
+            "floor_total_in_queue": self._floor_total_in_queue(canteen, floor_id),
+            "floor_open_window_count": (
+                sum(
+                    1 for w in canteen.windows
+                    if w.floor_id == floor_id and w.is_open
+                )
+                if canteen is not None and floor_id is not None else 0
+            ),
+            "target_window_is_open": window.is_open if window is not None else None,
+            "target_window_queue": window.queue_length if window is not None else 0,
+        }
+
+    def _record_intervention(self, event: dict) -> dict:
+        event["event_id"] = len(self.interventions) + 1
+        event.setdefault("event_type", "window_toggle")
+        self.interventions.append(event)
+        return event
+
     def toggle_window(self, canteen_id: str, window_id: int, open: bool) -> dict:
         """运行时开关窗口；只改 is_open（drain 不迁移），追加并返回干预事件 dict。"""
-        c = self.canteens[canteen_id]
+        c = self.canteens.get(canteen_id)
+        if c is None:
+            ev = {
+                "time": self.env.now,
+                "canteen_id": canteen_id,
+                "floor_id": None,
+                "window_id": window_id,
+                "action": "open" if open else "close",
+                "status": "rejected",
+                "changed": False,
+                "reason": "unknown canteen",
+                "metrics_before": self._intervention_metrics(None, None),
+                "metrics_after": self._intervention_metrics(None, None),
+            }
+            return self._record_intervention(ev)
         w = next((w for w in c.windows if w.id == window_id), None)
+        metrics_before = self._intervention_metrics(c, w)
         if w is None:
-            ev = {"time": self.env.now, "canteen_id": canteen_id,
-                  "floor_id": None, "window_id": window_id,
-                  "action": "open" if open else "close",
-                  "status": "rejected", "reason": "unknown window"}
-            self.interventions.append(ev)
-            return ev
+            ev = {
+                "time": self.env.now,
+                "canteen_id": canteen_id,
+                "floor_id": None,
+                "window_id": window_id,
+                "action": "open" if open else "close",
+                "status": "rejected",
+                "changed": False,
+                "reason": "unknown window",
+                "metrics_before": metrics_before,
+                "metrics_after": self._intervention_metrics(c, None),
+            }
+            return self._record_intervention(ev)
         if not open and w.is_open and c.open_window_count <= 1:
-            ev = {"time": self.env.now, "canteen_id": canteen_id,
-                  "floor_id": w.floor_id, "window_id": window_id,
-                  "action": "close", "status": "rejected",
-                  "reason": "cannot close last open window"}
-            self.interventions.append(ev)
-            return ev
+            ev = {
+                "time": self.env.now,
+                "canteen_id": canteen_id,
+                "floor_id": w.floor_id,
+                "window_id": window_id,
+                "action": "close",
+                "status": "rejected",
+                "changed": False,
+                "reason": "cannot close last open window",
+                "metrics_before": metrics_before,
+                "metrics_after": self._intervention_metrics(c, w),
+            }
+            return self._record_intervention(ev)
+        old_state = w.is_open
         w.is_open = bool(open)   # idempotent: 同态重复无副作用
-        ev = {"time": self.env.now, "canteen_id": canteen_id,
-              "floor_id": w.floor_id, "window_id": window_id,
-              "action": "open" if open else "close", "status": "applied"}
-        self.interventions.append(ev)
-        return ev
+        ev = {
+            "time": self.env.now,
+            "canteen_id": canteen_id,
+            "floor_id": w.floor_id,
+            "window_id": window_id,
+            "action": "open" if open else "close",
+            "status": "applied",
+            "changed": old_state != w.is_open,
+            "metrics_before": metrics_before,
+            "metrics_after": self._intervention_metrics(c, w),
+        }
+        return self._record_intervention(ev)
+
+    def add_window(self, canteen_id: str, floor_id: int) -> dict:
+        """运行时新增一个开放窗口，作为独立干预事件记录。"""
+        c = self.canteens.get(canteen_id)
+        if c is None:
+            ev = {
+                "time": self.env.now,
+                "canteen_id": canteen_id,
+                "floor_id": floor_id,
+                "window_id": None,
+                "action": "add",
+                "status": "rejected",
+                "changed": False,
+                "reason": "unknown canteen",
+                "metrics_before": self._intervention_metrics(None, None, floor_id),
+                "metrics_after": self._intervention_metrics(None, None, floor_id),
+                "event_type": "window_add",
+            }
+            return self._record_intervention(ev)
+
+        metrics_before = self._intervention_metrics(c, None, floor_id)
+        try:
+            window = c.add_window(floor_id)
+        except ValueError as exc:
+            ev = {
+                "time": self.env.now,
+                "canteen_id": canteen_id,
+                "floor_id": floor_id,
+                "window_id": None,
+                "action": "add",
+                "status": "rejected",
+                "changed": False,
+                "reason": str(exc),
+                "metrics_before": metrics_before,
+                "metrics_after": self._intervention_metrics(c, None, floor_id),
+                "event_type": "window_add",
+            }
+            return self._record_intervention(ev)
+
+        ev = {
+            "time": self.env.now,
+            "canteen_id": canteen_id,
+            "floor_id": window.floor_id,
+            "window_id": window.id,
+            "action": "add",
+            "status": "applied",
+            "changed": True,
+            "metrics_before": metrics_before,
+            "metrics_after": self._intervention_metrics(c, window),
+            "event_type": "window_add",
+        }
+        return self._record_intervention(ev)
 
     def advance(self, display_tick_seconds: float):
         """推进仿真时间。前端 /api/campus/step 按展示时间片调用。"""

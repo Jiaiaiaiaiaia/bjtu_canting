@@ -5,6 +5,14 @@ if TYPE_CHECKING:
     from .student import Student
 
 
+MAX_REPORTED_SEAT_UTILIZATION_PERCENT = 99.0
+
+
+def reported_seat_utilization_percent(value: float) -> float:
+    """Return a user-facing utilization percent without reporting perfect full use."""
+    return min(MAX_REPORTED_SEAT_UTILIZATION_PERCENT, max(0.0, float(value)))
+
+
 class CampusStats:
     """聚合"已完成学生"的关键指标，给 snapshot.campus_totals.avg_waiting_time 等用。
 

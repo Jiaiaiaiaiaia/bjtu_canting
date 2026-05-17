@@ -273,6 +273,20 @@ def test_campus_statistics_returns_aggregate_metrics_not_raw_snapshot(client):
         assert field in body
 
 
+def test_single_canteen_preset_seat_utilization_never_reports_full_capacity(client):
+    preset = client.get("/api/campus/presets/single-canteen").get_json()
+    client.post("/api/campus/config", json=preset["config"])
+    client.post("/api/campus/start")
+    client.post("/api/campus/finish")
+
+    res = client.get("/api/campus/statistics")
+
+    assert res.status_code == 200
+    body = res.get_json()
+    assert 0 <= body["seat_utilization"] < 100
+    assert max(body["seat_util_timeline"]["y"]) < 100
+
+
 def test_campus_status_returns_mode_field(client):
     empty = client.get("/api/campus/status").get_json()
     assert empty["mode"] is None

@@ -2,8 +2,9 @@
 //
 // 三段（顶/中/底）：
 //  - 顶 = KPI 大数字：总览态显全局，下钻态显本层（全部读后端 snapshot/totals）。
-//  - 中 = 按楼层分组的窗口开关网格：▣ 开 / ▢ 关，可点；点击调
+//  - 中 = 按楼层分组的窗口开关网格：可添加窗口，也可开关已有窗口；点击调
 //    POST /api/campus/canteens/<cid>/windows/<wid>/toggle {open:bool}（E3 端点），
+//    或 POST /api/campus/canteens/<cid>/floors/<floorId>/windows/add，
 //    用返回的 snapshot/interventions 反映结果。
 //  - 底 = 干预事件流滚动日志（时间·层·窗·动作·结果），即 §3.4 interventions 的 UI 出口。
 //
@@ -26,11 +27,19 @@ const CSS = `
 #${PANEL_ID} .ops-kpi .cell b{display:block;font-size:18px;color:#2dd4bf;line-height:1.1}
 #${PANEL_ID} .ops-kpi .cell span{font-size:11px;color:#8fb7b2}
 #${PANEL_ID} .ops-title{font-size:11px;color:#8fb7b2;letter-spacing:1px;margin:2px 0}
+#${PANEL_ID} .ops-run-controls{display:grid;grid-template-columns:1fr;gap:6px}
+#${PANEL_ID} .ops-finish-btn{cursor:pointer;border-radius:6px;border:1px solid #b45b63;
+ background:rgba(128,25,36,.72);color:#ffe2e5;font-size:12px;font-weight:700;
+ padding:7px 10px;text-align:center}
+#${PANEL_ID} .ops-finish-btn:hover:not(:disabled){background:rgba(159,35,49,.86)}
+#${PANEL_ID} .ops-finish-btn:disabled{opacity:.62;cursor:progress}
 #${PANEL_ID} .ops-floor{margin-bottom:6px}
 #${PANEL_ID} .ops-floor>label{font-size:11px;color:#9fc6c1}
 #${PANEL_ID} .ops-win{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
 #${PANEL_ID} .ops-win button{font-size:11px;cursor:pointer;border-radius:4px;
- border:1px solid #2c5366;background:#0d2030;color:#cfe9e6;padding:2px 6px;min-width:34px}
+ border:1px solid #2c5366;background:#0d2030;color:#cfe9e6;padding:2px 6px;min-width:42px}
+#${PANEL_ID} .ops-win button.ops-add-window{min-width:66px;background:#123b47;
+ border-color:#39c6df;color:#a7f3ff;font-weight:700}
 #${PANEL_ID} .ops-win button.open{background:#16453a;border-color:#2dd4bf;color:#7df0dd}
 #${PANEL_ID} .ops-win button.closed{background:#3a2b2f;border-color:#d64a55;color:#e7a3a8}
 #${PANEL_ID} .ops-win button:disabled{opacity:.5;cursor:progress}
@@ -45,12 +54,15 @@ export class InterventionUI {
     constructor() {
         this.root = null;
         this.kpiEl = null;
+        this.finishBtn = null;
         this.gridEl = null;
         this.logEl = null;
         this._canteenId = null;
         this._busy = new Set();         // 进行中的 toggle 键，防重复点击
+        this._finishing = false;
         // 干预后端回包回调：scene3d 用返回 snapshot 立即刷新一帧。
         this.onSnapshot = null;
+        this.onFinish = null;
     }
 
     mount(container) {
@@ -73,6 +85,12 @@ export class InterventionUI {
             <div>
               <div class="ops-title">KPI</div>
               <div class="ops-kpi"></div>
+            </div>
+            <div>
+              <div class="ops-title">运行控制</div>
+              <div class="ops-run-controls">
+                <button type="button" class="ops-finish-btn">结束仿真</button>
+              </div>
             </div>
             <div>
               <div class="ops-title">窗口开关</div>
@@ -102,6 +120,8 @@ export class InterventionUI {
         }
         this.root = root;
         this.kpiEl = root.querySelector('.ops-kpi');
+        this.finishBtn = root.querySelector('.ops-finish-btn');
+        this.finishBtn?.addEventListener('click', () => this._finish());
         this.gridEl = root.querySelector('.ops-grid');
         this.logEl = root.querySelector('.ops-log');
     }
@@ -117,6 +137,7 @@ export class InterventionUI {
     dispose() {
         this._teardownDom();
         this._busy.clear();
+        this._finishing = false;
     }
 
     // frame 来自 state_adapter.buildFrame；mode = 'overview' | 'focus'。
@@ -163,16 +184,32 @@ export class InterventionUI {
             label.textContent = `${floor.floor_id}F`;
             const row = document.createElement('div');
             row.className = 'ops-win';
-            floor.windows.forEach(win => {
+            const addBtn = document.createElement('button');
+            addBtn.className = 'ops-add-window';
+            addBtn.dataset.floorId = String(floor.floor_id);
+            addBtn.textContent = '添加窗口';
+            addBtn.title = `${floor.floor_id}F 添加一个开放服务窗口`;
+            addBtn.disabled = this._finishing || this._busy.has(
+                `${this._canteenId}#floor-${floor.floor_id}#add`
+            );
+            addBtn.addEventListener('click', () => this._addWindow(floor.floor_id));
+            row.appendChild(addBtn);
+            const windowsForDisplay = [...floor.windows].sort((a, b) => (
+                Number(a.is_open) - Number(b.is_open)
+                || Number(a.id) - Number(b.id)
+            ));
+            windowsForDisplay.forEach(win => {
                 const key = `${this._canteenId}#${win.id}`;
                 const btn = document.createElement('button');
                 const isOpen = win.is_open;
+                const actionLabel = isOpen ? '关' : '开';
                 btn.className = isOpen ? 'open' : 'closed';
-                btn.textContent = `${isOpen ? '▣' : '▢'}${win.id}`;
+                btn.dataset.windowId = String(win.id);
+                btn.textContent = `${actionLabel}${win.id}`;
                 btn.title = isOpen
                     ? `窗口 ${win.id} 开放（点击关闭）`
                     : `窗口 ${win.id}${win.closing ? ' 关闭中' : ' 已关'}（点击开启）`;
-                btn.disabled = this._busy.has(key);
+                btn.disabled = this._finishing || this._busy.has(key);
                 btn.addEventListener('click', () =>
                     this._toggle(win.id, !isOpen, key));
                 row.appendChild(btn);
@@ -188,7 +225,7 @@ export class InterventionUI {
         const rows = interventions.slice(-40).reverse().map(ev => {
             const t = Math.round(ev.time ?? 0);
             const cls = ev.status === 'rejected' ? 'rejected' : 'applied';
-            const act = ev.action === 'open' ? '开窗' : '关窗';
+            const act = this._actionLabel(ev.action);
             const res = ev.status === 'rejected'
                 ? `拒绝(${ev.reason || ''})` : '已生效';
             const fl = ev.floor_id == null ? '-' : `${ev.floor_id}F`;
@@ -198,9 +235,41 @@ export class InterventionUI {
         this.logEl.innerHTML = rows.join('') || '<div class="row">暂无干预</div>';
     }
 
+    _actionLabel(action) {
+        if (action === 'add') return '添加窗口';
+        if (action === 'open') return '开窗';
+        return '关窗';
+    }
+
+    async _addWindow(floorId) {
+        if (this._finishing || !this._canteenId) return;
+        const key = `${this._canteenId}#floor-${floorId}#add`;
+        if (this._busy.has(key)) return;
+        this._busy.add(key);
+        this._refreshDisabled();
+        try {
+            const res = await fetch(
+                `${API_BASE}/campus/canteens/${encodeURIComponent(this._canteenId)}`
+                + `/floors/${floorId}/windows/add`,
+                { method: 'POST' }
+            );
+            if (res.ok) {
+                const snapshot = await res.json();
+                if (typeof this.onSnapshot === 'function') {
+                    this.onSnapshot(snapshot);
+                }
+            }
+        } catch (err) {
+            // 网络失败静默：下一帧 snapshot 会自然纠正显示状态。
+        } finally {
+            this._busy.delete(key);
+            this._refreshDisabled();
+        }
+    }
+
     // 调 E3 端点；用返回 snapshot 立即刷新（不等下一 step 帧）。
     async _toggle(windowId, open, key) {
-        if (this._busy.has(key) || !this._canteenId) return;
+        if (this._finishing || this._busy.has(key) || !this._canteenId) return;
         this._busy.add(key);
         this._refreshDisabled();
         try {
@@ -227,12 +296,42 @@ export class InterventionUI {
         }
     }
 
+    async _finish() {
+        if (this._finishing) return;
+        this._finishing = true;
+        if (this.finishBtn) {
+            this.finishBtn.disabled = true;
+            this.finishBtn.textContent = '结算中...';
+        }
+        this._refreshDisabled();
+        try {
+            const finished = typeof this.onFinish === 'function'
+                ? await this.onFinish()
+                : false;
+            if (finished === false) this._resetFinishButton();
+        } catch (err) {
+            this._resetFinishButton();
+        }
+    }
+
+    _resetFinishButton() {
+        this._finishing = false;
+        if (this.finishBtn) {
+            this.finishBtn.disabled = false;
+            this.finishBtn.textContent = '结束仿真';
+        }
+        this._refreshDisabled();
+    }
+
     _refreshDisabled() {
         if (!this.gridEl) return;
         this.gridEl.querySelectorAll('button').forEach(btn => {
-            // 按钮文本含窗口号，结合当前 canteenId 还原 busy 键。
-            const wid = (btn.textContent || '').replace(/[▣▢]/g, '');
-            btn.disabled = this._busy.has(`${this._canteenId}#${wid}`);
+            const wid = btn.dataset.windowId;
+            const floorId = btn.dataset.floorId;
+            const key = floorId !== undefined
+                ? `${this._canteenId}#floor-${floorId}#add`
+                : `${this._canteenId}#${wid}`;
+            btn.disabled = this._finishing || this._busy.has(key);
         });
     }
 }
