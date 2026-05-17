@@ -34,3 +34,16 @@ def test_scene3d_render_returns_to_fallback_when_webgl_is_unavailable():
         'return;',
     ):
         assert snippet in source
+
+
+THREE_DIR = REPO_ROOT / 'frontend' / 'static' / 'js' / 'three'
+
+
+def test_scene3d_modules_exist_and_facade_preserved():
+    s = (THREE_DIR / "scene3d.js").read_text(encoding="utf-8")
+    for snippet in ("window.CanteenApp3D = {", "init(container)",
+                    "render(snapshot, appState)", "dispose()",
+                    "visibleCanteens", "pendingCanteens"):
+        assert snippet in s              # 既有契约不破
+    for m in ("state_adapter.js", "canteen_scene.js", "intervention_ui.js"):
+        assert (THREE_DIR / m).exists()

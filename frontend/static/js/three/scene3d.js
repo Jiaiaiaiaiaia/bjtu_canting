@@ -1,5 +1,26 @@
+// scene3d.js — 3D 核心 + 对外 facade（spec §2/§4）
+//
+// 本文件是 3D 的 CORE：renderer / scene / camera / 动画循环 / 场景切换，
+// 并对外**仅**暴露 `window.CanteenApp3D = { init, render, dispose }`。
+// 拆分后的职责委派：
+//   - 单食堂多层场景构建 + A+C 相机状态机 → canteen_scene.js (CanteenScene)
+//   - 离散 snapshot → 连续插值目标             → state_adapter.js (StateAdapter)
+//   - 右侧三段运维台 + 窗口干预 API 出口        → intervention_ui.js (InterventionUI)
+//
+// 不变量（契约测试断言，勿删 token）：
+//   - `import * as THREE from 'three'` / OrbitControls import 保留。
+//   - `window.CanteenApp3D = {` + `init(container)` + `render(snapshot, appState)`
+//     + `dispose()` 保留；campus 路径的 `visibleCanteens` / `pendingCanteens`
+//     处理保留。
+//   - 无 WebGL 兜底：`let webglAvailable = true;` / `webglAvailable = false;` /
+//     `if (!webglAvailable || !renderer || !contentGroup) {` /
+//     `showFallback(document.getElementById('three-stage'));` / `return;` 保留。
+
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { StateAdapter } from './state_adapter.js';
+import { CanteenScene } from './canteen_scene.js';
+import { InterventionUI } from './intervention_ui.js';
 
 let containerEl = null;
 let renderer = null;
@@ -8,6 +29,14 @@ let camera = null;
 let controls = null;
 let contentGroup = null;
 let webglAvailable = true;
+
+// 拆分后的协作单元（单食堂 3D 主体验）
+let stateAdapter = null;
+let canteenScene = null;
+let interventionUI = null;
+let raycaster = null;
+const pointer = new THREE.Vector2();
+let lastAppState = null;
 
 function init(container) {
     if (!container) return;
@@ -70,8 +99,44 @@ function init(container) {
 
     contentGroup = new THREE.Group();
     scene.add(contentGroup);
+
+    // 委派单元装配（facade 内部，对外不可见）
+    stateAdapter = new StateAdapter();
+    canteenScene = new CanteenScene(THREE, scene, camera, controls);
+    interventionUI = new InterventionUI();
+    interventionUI.mount(container);
+    // 干预 API 回包 → 立即用返回 snapshot 刷新一帧（不等下一 step）。
+    interventionUI.onSnapshot = snapshot => {
+        if (snapshot && lastAppState) render(snapshot, lastAppState);
+    };
+
+    raycaster = new THREE.Raycaster();
+    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+
     resize();
     animate();
+}
+
+// 点选：命中楼层/学生 → 进 FOCUS / 点名追踪；空白 → 回 A 总览。
+function onPointerDown(event) {
+    if (!canteenScene || !renderer || !camera) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(canteenScene.group.children, true);
+    const hit = hits.find(h => h.object?.userData?.kind);
+    if (!hit) {
+        canteenScene.resetView();
+        return;
+    }
+    const data = hit.object.userData;
+    if (data.kind === 'student') {
+        canteenScene.trackStudent(data.studentId);
+        canteenScene.focusFloor(data.floorId);
+    } else if (data.floorId != null) {
+        canteenScene.focusFloor(data.floorId);
+    }
 }
 
 function resize() {
@@ -91,6 +156,11 @@ function showFallback(container) {
 function animate() {
     if (!renderer || !scene || !camera) return;
     requestAnimationFrame(animate);
+    // 单食堂 FOCUS/总览相机与楼层滑开动画由 CanteenScene 推进（位置已由
+    // StateAdapter 插值，这里只推进相机/层位移逼近）。
+    if (canteenScene && lastAppState?.view === 'canteen') {
+        canteenScene.update(canteenScene._lastFrame);
+    }
     if (controls) controls.update();
     renderer.render(scene, camera);
 }
@@ -120,6 +190,8 @@ function material(color, options = {}) {
     });
 }
 
+// campus 多食堂总览路径保留（含 visibleCanteens / pendingCanteens 处理），
+// 旧校园联合演示/手动入口仍可用；单食堂 3D 主体验走 renderCanteen 委派。
 function markerEntries(snapshot, appState) {
     const runtime = snapshot?.canteens || {};
     const visibleCanteens = Array.isArray(appState?.visibleCanteens)
@@ -215,57 +287,16 @@ function queueLength(canteen) {
     return windowQueue + (canteen.waiting_queue_length || 0);
 }
 
+// 单食堂 3D 主体验：委派给 StateAdapter（插值）+ CanteenScene（多层/相机）
+// + InterventionUI（三段运维台 + 窗口干预 API）。
 function renderCanteen(snapshot, appState) {
-    const canteen = snapshot?.canteens?.[appState?.activeCanteenId]
-        || Object.values(snapshot?.canteens || {})[0];
-    if (!canteen) return;
-    addLabel(canteen.display_name || appState.activeCanteenId || '食堂', 160, 70, -40);
-
-    const floors = canteen.floors || [{ floor_id: 1, windows: canteen.windows, seats: canteen.seats }];
-    floors.forEach((floor, floorIndex) => {
-        const z = floorIndex * 74;
-        const deck = new THREE.Mesh(
-            new THREE.BoxGeometry(260, 4, 54),
-            material(0x26394d)
-        );
-        deck.position.set(160, floorIndex * 34, z);
-        contentGroup.add(deck);
-
-        (floor.windows || []).forEach((win, idx) => {
-            const stall = new THREE.Mesh(
-                new THREE.BoxGeometry(18, 20, 18),
-                material(win.is_serving ? 0xd64a55 : 0x94a8b5)
-            );
-            stall.position.set(52 + idx * 26, floorIndex * 34 + 14, z - 18);
-            contentGroup.add(stall);
-        });
-
-        (floor.seats || []).slice(0, 90).forEach((seat, idx) => {
-            const seatMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(8, 4, 8),
-                material(seat.status === 'occupied' ? 0xe7bd63 : 0x77d993)
-            );
-            seatMesh.position.set(
-                52 + (idx % 18) * 12,
-                floorIndex * 34 + 7,
-                z + 2 + Math.floor(idx / 18) * 10
-            );
-            contentGroup.add(seatMesh);
-        });
-
-        (floor.students || []).slice(0, 80).forEach((student, idx) => {
-            const dot = new THREE.Mesh(
-                new THREE.SphereGeometry(3.6, 12, 8),
-                material(student.position === 'waiting_queue' ? 0x9333ea : 0x52d6d1)
-            );
-            dot.position.set(
-                52 + (idx % 20) * 10,
-                floorIndex * 34 + 13,
-                z + 48 + Math.floor(idx / 20) * 8
-            );
-            contentGroup.add(dot);
-        });
-    });
+    if (!stateAdapter || !canteenScene) return;
+    const frame = stateAdapter.buildFrame(snapshot, appState || {});
+    if (!frame) return;
+    canteenScene.update(frame);
+    if (interventionUI) {
+        interventionUI.render(frame, canteenScene.mode, canteenScene.focusFloorId);
+    }
 }
 
 function render(snapshot, appState) {
@@ -274,17 +305,25 @@ function render(snapshot, appState) {
         showFallback(document.getElementById('three-stage'));
         return;
     }
-    clearContent();
+    lastAppState = appState || {};
     if (appState?.view === 'canteen') {
+        // 单食堂场景由 CanteenScene 自管其 group；core 的 contentGroup 清空，
+        // 避免 campus 残留叠加。
+        clearContent();
         renderCanteen(snapshot, appState || {});
     } else {
+        clearContent();
+        if (canteenScene) canteenScene._clear();
         renderCampus(snapshot, appState || {});
     }
     resize();
 }
 
 function dispose() {
+    if (interventionUI) interventionUI.dispose();
+    if (canteenScene) canteenScene.dispose();
     if (renderer) {
+        renderer.domElement?.removeEventListener?.('pointerdown', onPointerDown);
         renderer.dispose();
         renderer.domElement?.remove();
     }
@@ -293,6 +332,11 @@ function dispose() {
     camera = null;
     controls = null;
     contentGroup = null;
+    stateAdapter = null;
+    canteenScene = null;
+    interventionUI = null;
+    raycaster = null;
+    lastAppState = null;
 }
 
 window.addEventListener('resize', resize);
