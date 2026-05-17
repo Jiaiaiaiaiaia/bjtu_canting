@@ -102,7 +102,7 @@ const MINGHU_FLOOR_LAYOUTS = {
         ],
         widthBias: -24,
         depthBias: -20,
-        rearNotchDepth: 18,
+        rearNotchDepth: 0,
         cueNames: [
             'f1-snake-queue-guide',
             'f1-pickup-return-lane',
@@ -508,19 +508,27 @@ function furnitureDerivedFootprint(seats, windows, profile) {
     const maxX = centerX + width / 2;
     const minZ = 0;
     const maxZ = depth;
-    const notchDepth = Math.min(
-        Math.max(20, profile.rearNotchDepth || 28),
+    const rawNotch = profile.rearNotchDepth ?? 28;
+    const notchDepth = rawNotch === 0 ? 0 : Math.min(
+        Math.max(20, rawNotch),
         Math.max(20, Math.round(depth * 0.28))
     );
     const notchWidth = Math.max(STAIR_CORE_WIDTH + 10, Math.round(width * 0.18));
-    const outline = [
-        { x: minX, z: minZ },
-        { x: maxX, z: minZ },
-        { x: maxX, z: maxZ - notchDepth },
-        { x: minX + notchWidth, z: maxZ - notchDepth },
-        { x: minX + notchWidth, z: maxZ },
-        { x: minX, z: maxZ },
-    ];
+    const outline = notchDepth === 0
+        ? [
+            { x: minX, z: minZ },
+            { x: maxX, z: minZ },
+            { x: maxX, z: maxZ },
+            { x: minX, z: maxZ },
+          ]
+        : [
+            { x: minX, z: minZ },
+            { x: maxX, z: minZ },
+            { x: maxX, z: maxZ - notchDepth },
+            { x: minX + notchWidth, z: maxZ - notchDepth },
+            { x: minX + notchWidth, z: maxZ },
+            { x: minX, z: maxZ },
+          ];
 
     return {
         source: 'furnitureDerivedFootprint',
@@ -895,12 +903,18 @@ function stairSwitchTarget(student, baseY, footprint, sid) {
         ? student.target_floor_id
         : fromFloor;
     const progress = clamp01(student.floor_switch_progress);
-    const stairZs = entranceZsForFootprint(footprint);
-    const stairZ = stairZs[Math.abs(sid) % stairZs.length];
+    const step = Number.isFinite(student.stair_step)
+        ? Math.max(0, Math.min(7, student.stair_step))
+        : Math.min(7, Math.floor(progress * 8));
+    const t = step / 7;
+    const direction = targetFloor >= fromFloor ? 1 : -1;
+    const entranceZs = entranceZsForFootprint(footprint);
+    const startZ = direction > 0 ? entranceZs[0] : entranceZs[1];
+    const endZ   = direction > 0 ? entranceZs[1] : entranceZs[0];
     return {
         x: sideEntranceXForFootprint(footprint) + 9 + jitter(sid, 11) * 0.45,
-        y: baseY + STUDENT_Y + (targetFloor - fromFloor) * FLOOR_V * progress,
-        z: stairZ + jitter(sid, 12) * 0.7,
+        y: baseY + STUDENT_Y + t * FLOOR_V * (targetFloor - fromFloor),
+        z: startZ + t * (endZ - startZ) + jitter(sid, 12) * 0.5,
     };
 }
 
