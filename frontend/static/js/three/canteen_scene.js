@@ -453,7 +453,7 @@ const MINGHU_FLOOR_LAYOUTS = {
             { id: 'f3-front-tea-bay', side: 'front' },
         ],
         tableShiftX: 8,
-        tableZ0: 106,
+        tableZ0: 112,
         tableRowStagger: -8,
         windowZ: [14, 34],
         sideWindowCount: 2,

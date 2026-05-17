@@ -186,7 +186,7 @@ const MINGHU_FLOOR_LAYOUTS = {
         sideWindowZ0: 26,
         sideWindowGap: 30,
         tableShiftX: 8,
-        tableZ0: 106,
+        tableZ0: 112,
         tableRowStagger: -8,
         visibleTableCount: 52,
         mainAisleWidth: 72,
