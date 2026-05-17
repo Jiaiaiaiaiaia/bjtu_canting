@@ -58,6 +58,10 @@ class CampusCoordinator:
         self.total_arrived: int = 0
         self.total_served: int = 0
 
+        # E2：窗口开关运行时干预流水；每次 toggle_window 尝试（applied/rejected）
+        # 都追加一条事件，snapshot() 透出，E3 落库。
+        self.interventions: list = []
+
     def on_student_arrived(self, student: Student):
         self.total_arrived += 1
         self.all_students.append(student)
@@ -73,6 +77,27 @@ class CampusCoordinator:
 
     def on_student_left(self, student: Student):
         self.total_served += 1
+
+    def toggle_window(self, canteen_id: str, window_id: int, open: bool) -> dict:
+        c = self.canteens[canteen_id]
+        w = next((w for w in c.windows if w.id == window_id), None)
+        if w is None:
+            ev = {"time": self.env.now, "canteen_id": canteen_id,
+                  "floor_id": None, "window_id": window_id,
+                  "action": "open" if open else "close",
+                  "status": "rejected", "reason": "unknown window"}
+            self.interventions.append(ev); return ev
+        if not open and w.is_open and c.open_window_count <= 1:
+            ev = {"time": self.env.now, "canteen_id": canteen_id,
+                  "floor_id": w.floor_id, "window_id": window_id,
+                  "action": "close", "status": "rejected",
+                  "reason": "cannot close last open window"}
+            self.interventions.append(ev); return ev
+        w.is_open = bool(open)   # idempotent: 同态重复无副作用
+        ev = {"time": self.env.now, "canteen_id": canteen_id,
+              "floor_id": w.floor_id, "window_id": window_id,
+              "action": "open" if open else "close", "status": "applied"}
+        self.interventions.append(ev); return ev
 
     def advance(self, display_tick_seconds: float):
         """推进仿真时间。前端 /api/campus/step 按展示时间片调用。"""
@@ -121,4 +146,5 @@ class CampusCoordinator:
                 "avg_walk_time": self.stats.avg_walk_time(),
                 "switch_rate": self.stats.switch_rate(),
             },
+            "interventions": list(self.interventions),
         }
