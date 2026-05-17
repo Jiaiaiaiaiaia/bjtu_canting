@@ -3194,3 +3194,48 @@ def test_table_blocks_are_regularized_grids_inside_footprint():
         assert payload[fid]["uniqX"] >= 6 and payload[fid]["uniqZ"] >= 5, fid
     # floors are not identical layouts
     assert len({payload["1"]["sig"], payload["2"]["sig"], payload["3"]["sig"]}) == 3
+
+
+def test_student_paths_avoid_furniture_and_avatars_face_travel():
+    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    assert "studentAvatar" in scene
+    # avatar orients along travel direction — assert avatar-SCOPED so the red is
+    # meaningful (unrelated rotation.y/lookAt elsewhere must not satisfy it).
+    avatar_src = scene.split("_studentAvatar(", 1)[1][:4000]
+    assert "atan2" in avatar_src, "avatar must derive facing via Math.atan2(dx,dz)"
+
+    script = textwrap.dedent(
+        """
+        import { StateAdapter } from './frontend/static/js/three/state_adapter.js';
+        const adapter = new StateAdapter();
+        // Recognized snapshot states only (no invented window_id/seat_id keys;
+        // p2 is a brand-new arrival → entering path).
+        const students = [
+          { id:'p1', floor_id:1, position:'window_queue' },
+          { id:'p2', floor_id:1 },
+          { id:'p3', floor_id:1, position:'seated' },
+        ];
+        const frame = adapter.buildFrame(
+          { canteens: { minghu_xueyi: { id:'minghu_xueyi', display_name:'明湖',
+            floors:[{ floor_id:1,
+              windows:Array.from({length:6},(_,i)=>({id:`f1-w${i}`,floor_id:1,is_open:true})),
+              seats:Array.from({length:172},(_,i)=>({id:`f1-s${i}`,floor_id:1,status:'empty'})),
+              students }] } } },
+          { activeCanteenId:'minghu_xueyi' });
+        const f = frame.floors[0];
+        const pts = [];
+        for (const s of f.students) {
+          if (Array.isArray(s.path)) pts.push(...s.path);
+          if (s.position3d) pts.push(s.position3d);
+        }
+        const inFoot = pts.every(p =>
+          p.x >= f.footprint.minX - 2 && p.x <= f.footprint.maxX + 2 &&
+          p.z >= f.footprint.minZ - 2 && p.z <= f.footprint.maxZ + 2);
+        console.log(JSON.stringify({ count: pts.length, inFoot }));
+        """
+    )
+    payload = json.loads(subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT, check=True, text=True, capture_output=True).stdout)
+    assert payload["count"] > 0
+    assert payload["inFoot"] is True
