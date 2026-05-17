@@ -165,20 +165,24 @@ function stallTheme(floorId) {
 }
 ```
 
-- [ ] **Step 2: Rewrite the front branch of `_addServiceStall`** (the code after the `if (layoutSide === 'left') { ... return; }` block, ~1592–1671). Preserve every existing hook. Replace the flat counter/guard/rail/light stack with four explicitly-named parts using the theme; keep the existing `body` (the `kind:'window'` mesh), `_tagWindowInterventionBody`, status colour logic, `_addMenuBoard` call with `alwaysReadableWindowLabel`/`renderOrder`, the queue heat strip, the `closing` label, and the final `_addWindowInterventionPulse`. Concretely:
+- [ ] **Step 2: Augment the front branch of `_addServiceStall` additively** (the code after the `if (layoutSide === 'left') { ... return; }` block, ~1592–1671).
 
-  - Keep the `const body = this._box(group, 'photo service counter window', FRONT_WINDOW_COUNTER_SIZE, [x, y + 2.7, z], this._photoMat(... open?0xd8e2df:0x5c6874 ...), { floorId, kind:'window', windowId: win.id })` line and its `_tagWindowInterventionBody(body, interventionEffect)` exactly (this is the contract mesh + the existing `test_front_service_windows_restore_light_counters_without_dark_residual_blocks` regression).
+  **Additive-only rule (this is the one place implementation can stall):** the existing boxes `'photo service counter window'`, `'glass food guard'`, `'front service status rail'`, `'front service serving status light'`, the queue-heat strip, the `closing` label, and **every `FRONT_WINDOW_*` named size/colour constant** must remain in the source **verbatim** — they are hard-asserted by `test_front_window_status_cue_does_not_render_as_dark_residual_block`, `test_canteen_scene_front_windows_do_not_render_large_red_serving_blocks`, `test_canteen_scene_front_service_windows_are_large_enough_for_1f_focus_view`, `test_front_service_windows_restore_light_counters_without_dark_residual_blocks`, and the plan forbids editing those tests. Do **not** rename, delete, or "replace" any existing token or constant. The only allowed source delta is **adding** the new `'stall …'` themed parts as a visual superset layered with the existing meshes.
+
+  Concretely, leaving all existing lines in place:
+  - Keep the `const body = this._box(group, 'photo service counter window', FRONT_WINDOW_COUNTER_SIZE, [x, y + 2.7, z], this._photoMat(... open?0xd8e2df:0x5c6874 ...), { floorId, kind:'window', windowId: win.id })` line and its `_tagWindowInterventionBody(body, interventionEffect)` exactly.
+  - Keep the existing `'glass food guard'`, `'front service status rail'`, `'front service serving status light'` boxes and all `FRONT_WINDOW_*` constants unchanged (the new glass/status parts are *additional* themed geometry, not substitutes; let the new glass sit just outside the retained guard, the new status strip beside the retained rail).
   - Add `const th = stallTheme(floorId);`.
-  - Emit four named parts via `this._box(group, '<token>', size, pos, this._photoMat(color, { opacity, roughness: th.roughness, emissive: <same color>, emissiveIntensity: win.is_serving ? 0.03 : 0.012 }))`:
-    - `'stall signboard band'` — thin band above the counter at the label height; colour `th.sign`; this is what the menu board visually sits on (place the existing `_addMenuBoard` just in front of it, do not delete the menu board).
-    - `'stall open-kitchen glass'` — replaces `'glass food guard'`; colour `th.glass`, `opacity: 0.34`, low roughness but no specular boost; keep its position relative to `FRONT_WINDOW_COUNTER_SIZE`.
+  - **Add** these new named parts via `this._box(group, '<token>', size, pos, this._photoMat(color, { opacity, roughness: th.roughness, emissive: <same color>, emissiveIntensity: win.is_serving ? 0.03 : 0.012 }))`:
+    - `'stall signboard band'` — thin band above the counter at the label height; colour `th.sign`; position the existing `_addMenuBoard` call (kept verbatim, with `alwaysReadableWindowLabel`/`renderOrder`) just in front of it.
+    - `'stall open-kitchen glass'` — colour `th.glass`, `opacity: 0.34`, no specular boost; positioned relative to `FRONT_WINDOW_COUNTER_SIZE` (in addition to, not instead of, `'glass food guard'`).
     - `'stall base counter'` — a low plinth under the existing counter mesh; colour `th.counter`.
     - `'stall tray rail'` — a thin rail at the front edge; colour `th.rail`.
-    - `'stall status strip'` — replaces `'front service status rail'`; keep `frontStatusRailColor` status logic (open/serving/closed) but make it the thin status strip; keep `opacity` thin per existing `test_front_window_status_cue_does_not_render_as_dark_residual_block`.
-  - Keep the `win.is_open && win.is_serving` serving-light box, the `sat`/queue-heat strip block, and the `!win.is_open && win.closing` label unchanged in behaviour.
+    - `'stall status strip'` — a thin strip driven by the same `frontStatusRailColor` open/serving/closed logic; thin opacity (in addition to, not instead of, `'front service status rail'`).
+  - Keep the `win.is_open && win.is_serving` serving-light box, the `sat`/queue-heat strip block, and the `!win.is_open && win.closing` label unchanged.
   - End with the unchanged `this._addWindowInterventionPulse(group, x, y, z, layoutSide, interventionEffect);`.
 
-  Dimensions are bounded by existing regression tests (`test_canteen_scene_uses_matte_service_window_effects`, `test_canteen_scene_front_windows_do_not_render_large_red_serving_blocks`, `test_canteen_scene_front_window_queue_heat_uses_thin_strip_not_red_cap`, `test_window_labels_do_not_draw_dark_backplate_blocks`, `test_canteen_scene_front_window_labels_are_centered_on_their_windows`, `test_canteen_scene_front_service_windows_are_large_enough_for_1f_focus_view`). Tune sizes until those pass; do not weaken them.
+  New-part dimensions are still bounded by `test_canteen_scene_uses_matte_service_window_effects`, `test_canteen_scene_front_window_queue_heat_uses_thin_strip_not_red_cap`, `test_window_labels_do_not_draw_dark_backplate_blocks`, `test_canteen_scene_front_window_labels_are_centered_on_their_windows`. Tune the new boxes' sizes until the full window/label/matte regression set passes; never weaken a regression test.
 
 - [ ] **Step 3: `node --check`**
 
@@ -224,7 +228,7 @@ def test_side_service_stall_shares_four_part_structure():
 Run: `PYTHONPATH=backend ./.venv/bin/python -m pytest backend/tests/test_frontend_three_js_contract.py::test_side_service_stall_shares_four_part_structure -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Rewrite the `left` branch** (~1528–1590) to emit the same four named parts at side-wall scale using `stallTheme(floorId)`, keeping its existing `body` `{ kind:'window', windowId }`, `_tagWindowInterventionBody`, side label (with `alwaysReadableWindowLabel`), `sat` queue-heat cap, `closing` label, and trailing `_addWindowInterventionPulse(... 'left' ...)`.
+- [ ] **Step 3: Augment the `left` branch additively** (~1528–1590). Same additive-only rule as Task A2 Step 2: keep the existing `'sideWall service counter window'` (`body` with `{ kind:'window', windowId }`), `'sideWall glass food guard'`, `'sideWall red stall menu fascia'` boxes, `_tagWindowInterventionBody`, side label (with `alwaysReadableWindowLabel`), `sat` queue-heat cap, `closing` label, and trailing `_addWindowInterventionPulse(... 'left' ...)` all verbatim. **Add** the new `'stall signboard band'`, `'stall open-kitchen glass'`, `'stall base counter'`, `'stall status strip'` parts at side-wall scale using `stallTheme(floorId)`. No existing side token is renamed or removed.
 
 - [ ] **Step 4: `node --check` + focused + side-window regression**
 
@@ -388,10 +392,12 @@ def test_student_paths_avoid_furniture_and_avatars_face_travel():
         """
         import { StateAdapter } from './frontend/static/js/three/state_adapter.js';
         const adapter = new StateAdapter();
+        // Recognized snapshot states only (no invented window_id/seat_id keys;
+        // p2 is a brand-new arrival → entering path).
         const students = [
-          { id:'p1', floor_id:1, position:'window_queue', window_id:'f1-w0' },
-          { id:'p2', floor_id:1, position:'walking_to_seat' },
-          { id:'p3', floor_id:1, position:'seated', seat_id:'f1-s10' },
+          { id:'p1', floor_id:1, position:'window_queue' },
+          { id:'p2', floor_id:1 },
+          { id:'p3', floor_id:1, position:'seated' },
         ];
         const frame = adapter.buildFrame(
           { canteens: { minghu_xueyi: { id:'minghu_xueyi', display_name:'明湖',
