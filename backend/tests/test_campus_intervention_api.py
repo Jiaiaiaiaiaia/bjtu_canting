@@ -1,12 +1,28 @@
-import json, pytest
-from app import create_app
+import pytest
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    import api.routes as r
-    monkeypatch.setattr(r, "DB_PATH", str(tmp_path / "t.db"))
-    app = create_app(); app.config.update(TESTING=True)
-    return app.test_client()
+    """每个测试使用独立 SQLite 与全新单例 session（镜像 test_campus_api.py）。"""
+    db_path = tmp_path / "test.db"
+    import api.routes as routes
+
+    monkeypatch.setattr(routes, "DB_PATH", str(db_path))
+    monkeypatch.setattr(routes, "_session", {
+        "mode": None,
+        "engine": None,
+        "coordinator": None,
+        "config_id": None,
+        "is_running": False,
+        "snapshot_buffer": [],
+    })
+
+    from app import create_app
+
+    app = create_app()
+    app.config["TESTING"] = True
+    with app.test_client() as c:
+        yield c
 
 def _start_single(client):
     pre = client.get("/api/campus/presets/single-canteen").get_json()
