@@ -43,8 +43,7 @@ export class ImmersiveUI {
 
         const brand = document.createElement('span');
         brand.className = 'twin-topbar-brand';
-        brand.textContent = '明湖食堂';
-        brand.setAttribute('aria-label', '明湖食堂标识');
+        brand.style.display = 'none';
         this._brandEl = brand;
         topbar.appendChild(brand);
 

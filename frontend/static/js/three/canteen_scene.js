@@ -728,8 +728,8 @@ export class CanteenScene {
         });
         mat.forceSinglePass = true;
         mat.polygonOffset = true;
-        mat.polygonOffsetFactor = 1;
-        mat.polygonOffsetUnits = 1;
+        mat.polygonOffsetFactor = -1;
+        mat.polygonOffsetUnits = -1;
         return mat;
     }
 
@@ -2116,16 +2116,6 @@ export class CanteenScene {
         );
         plinth.position.set(buildingFootprint.centerX, SITE_PLINTH_CENTER_Y, buildingFootprint.centerZ);
         this.group.add(plinth);
-        if (this.mode === 'overview') {
-            this._addOpenBuildingFrame(this.group, buildingFootprint, frame.floors, FLOOR_H);
-        }
-
-        // overview-only canteen title：聚焦楼层时隐藏大标题，避免遮挡楼层跳转视线。
-        if (this.mode === 'overview') {
-            this.group.add(this._label(frame.displayName || '食堂', buildingFootprint.centerX, topY + FLOOR_H + 34,
-                buildingFootprint.centerZ, PALETTE.labelKpi));
-        }
-
         // ---- Vertical stair core（贯通底座→楼顶的垂直交通核，比例随真实层高）----
         const stairHeight = topY + FLOOR_H + 6;
         this._entranceMarkersForFootprint(buildingFootprint).forEach(entrance => {
