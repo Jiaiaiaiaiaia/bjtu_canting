@@ -114,3 +114,12 @@ def test_intervention_ui_hooks_preserved_after_restyle():
         assert tok in s, f"intervention hook lost: {tok!r}"
     # 玻璃观感类（CSS 由 style.css 提供，这里只需结构 className 仍可被样式命中）
     assert "ops-kpi" in s
+
+
+def test_immersive_ui_module_contract():
+    s = (THREE_DIR / "immersive_ui.js").read_text(encoding="utf-8")
+    assert "export class ImmersiveUI" in s
+    for tok in ("twin-topbar", "twin-toolbar", "twin-floorstrip",
+                "twin-status", "data-render", "data-page"):
+        assert tok in s, f"immersive_ui missing {tok!r}"
+    assert "mount(" in s and "dispose(" in s
