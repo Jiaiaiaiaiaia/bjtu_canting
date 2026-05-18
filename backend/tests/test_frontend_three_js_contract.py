@@ -43,6 +43,28 @@ def test_scene3d_render_returns_to_fallback_when_webgl_is_unavailable():
 THREE_DIR = REPO_ROOT / 'frontend' / 'static' / 'js' / 'three'
 
 
+def _three_source(module_name):
+    return (THREE_DIR / module_name).read_text(encoding="utf-8")
+
+
+def _optional_three_source(module_name):
+    path = THREE_DIR / module_name
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def _canteen_scene_contract_source():
+    """Source tokens that define the canteen scene contract after module split."""
+    return "\n".join((
+        _three_source("canteen_scene.js"),
+        _optional_three_source("canteen_layouts.js"),
+        _optional_three_source("canteen_furniture.js"),
+    ))
+
+
+def _assert_any_token(source, tokens, message):
+    assert any(tok in source for tok in tokens), message
+
+
 def test_scene3d_modules_exist_and_facade_preserved():
     s = (THREE_DIR / "scene3d.js").read_text(encoding="utf-8")
     for snippet in ("window.CanteenApp3D = {", "init(container)",
@@ -164,7 +186,7 @@ def test_canteen_floor_shape_is_visible_from_above():
 
 
 def test_canteen_floor_surfaces_do_not_hide_lower_levels():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
     for tok in (
         "const FLOOR_SLAB_COLORS = [0xf0f4ee, 0xe3ece8];",
         "const FLOOR_TILE_COLOR = 0xf4f7f1;",
@@ -188,7 +210,7 @@ def test_canteen_floor_surfaces_do_not_hide_lower_levels():
 
 
 def test_focused_canteen_floor_uses_stable_readable_light_surface():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
     for tok in (
         "const OVERVIEW_FLOOR_SLAB_OPACITY = 0.07;",
         "const FOCUS_FLOOR_SLAB_OPACITY = 1.0;",
@@ -205,7 +227,7 @@ def test_focused_canteen_floor_uses_stable_readable_light_surface():
 
 
 def test_canteen_floor_slab_is_not_coplanar_with_site_plinth():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
     for tok in (
         "const SITE_PLINTH_CENTER_Y = -7;",
         "plinth.position.set(buildingFootprint.centerX, SITE_PLINTH_CENTER_Y, buildingFootprint.centerZ);",
@@ -685,7 +707,7 @@ def test_state_adapter_caps_heavy_crowds_without_truncating_kpis():
 
 
 def test_canteen_scene_marks_side_entrances_for_student_spawn():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
     for tok in (
         "_addEntranceMarker",
         "SIDE_ENTRANCE_X",
@@ -898,7 +920,7 @@ def test_canteen_scene_window_labels_stay_readable_and_sparse():
 
 def test_state_adapter_places_windows_in_loose_service_bays():
     adapter = (THREE_DIR / "state_adapter.js").read_text(encoding="utf-8")
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
     for tok in (
         "windowBays",
         "windowBayCounts",
@@ -1197,7 +1219,7 @@ def test_canteen_scene_adds_stable_floor_depth_cues_without_shimmering_grids():
 
 
 def test_canteen_scene_uses_open_axonometric_layered_building_model():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
 
     for tok in (
         "const OVERVIEW_THREE_QUARTER_X_RATIO = 0.28;",
@@ -1224,13 +1246,27 @@ def test_canteen_scene_uses_open_axonometric_layered_building_model():
         "topY + Math.max(OVERVIEW_CAMERA_Y_PADDING + OVERVIEW_THREE_QUARTER_Y_PADDING, buildingFootprint.width * OVERVIEW_THREE_QUARTER_HEIGHT_RATIO)",
         "Math.max(OVERVIEW_CAMERA_Z, buildingFootprint.maxZ + 250) + Math.max(OVERVIEW_THREE_QUARTER_Z_PADDING, buildingFootprint.depth * OVERVIEW_THREE_QUARTER_DEPTH_RATIO)",
         "this._camTarget.look.set(buildingFootprint.centerX + buildingFootprint.width * OVERVIEW_LOOK_PANEL_CLEARANCE_X_RATIO, centerY, buildingFootprint.centerZ)",
-        "this._mat(0xbdebf2, FLOOR_BACK_WALL_OPACITY)",
-        "this._mat(0xbdebf2, FLOOR_SIDE_WALL_OPACITY)",
         "if (this.mode === 'overview') {",
         "this._addOpenBuildingFrame(this.group, buildingFootprint, frame.floors, FLOOR_H);",
         "this._addOpenFloorFrame(fg, footprint, baseY, floor.floor_id);",
     ):
         assert tok in s, f"open axonometric building cue missing: {tok!r}"
+    _assert_any_token(
+        s,
+        (
+            "this._mat(0xbdebf2, FLOOR_BACK_WALL_OPACITY)",
+            "meshMat(this.THREE, 0xbdebf2, FLOOR_BACK_WALL_OPACITY)",
+        ),
+        "open axonometric building cue missing: rear wall material",
+    )
+    _assert_any_token(
+        s,
+        (
+            "this._mat(0xbdebf2, FLOOR_SIDE_WALL_OPACITY)",
+            "meshMat(this.THREE, 0xbdebf2, FLOOR_SIDE_WALL_OPACITY)",
+        ),
+        "open axonometric building cue missing: side wall material",
+    )
 
     assert "this._camTarget.pos.set(\n                buildingFootprint.centerX,\n                topY + OVERVIEW_CAMERA_Y_PADDING" not in s
     for tok in (
@@ -1246,7 +1282,7 @@ def test_canteen_scene_uses_open_axonometric_layered_building_model():
 
 
 def test_canteen_scene_uses_front_floor_gradient_display():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
 
     for tok in (
         "const OVERVIEW_FLOOR_GRADIENT_Z_OFFSETS = [48, 12, -24];",
@@ -1357,7 +1393,7 @@ def test_canteen_scene_declutters_window_labels_and_slows_focus_transition():
 
 
 def test_canteen_scene_window_labels_fit_readable_food_names():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
 
     for tok in (
         "const WINDOW_LABEL_MAX_CHARS = 6;",
@@ -1386,7 +1422,7 @@ def test_canteen_scene_focus_window_labels_do_not_intersect_3d_menu_boards():
 
 
 def test_canteen_scene_background_wall_panels_do_not_overlap_front_service_labels():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
 
     for token in (
         "const PHOTO_WALL_SIGN_COLOR = 0x18384a;",
@@ -1421,7 +1457,7 @@ def test_canteen_scene_focus_camera_keeps_side_and_top_angles_clear():
 
 
 def test_canteen_scene_uses_floor_specific_layout_profiles():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
     state_adapter = (THREE_DIR / "state_adapter.js").read_text(encoding="utf-8")
     for tok in (
         "MINGHU_FLOOR_LAYOUTS",
@@ -1446,7 +1482,7 @@ def test_canteen_scene_uses_floor_specific_layout_profiles():
 
 
 def test_canteen_scene_uses_real_minghu_window_food_labels():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
     for tok in (
         "MINGHU_WINDOW_LABELS",
         "_windowLabel",
@@ -1463,14 +1499,14 @@ def test_canteen_scene_uses_real_minghu_window_food_labels():
 
 
 def test_canteen_scene_preserves_mixed_chair_colors_when_seated():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
     assert "occupied ? PALETTE.seatOccupied : color" not in s
     assert "chairOccupancyMarker" in s
     assert "mixedChairPalette" in s
 
 
 def test_table_layout_preserves_backend_seats_but_caps_visual_tables():
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
     adapter = (THREE_DIR / "state_adapter.js").read_text(encoding="utf-8")
 
     assert "visibleTableCountForProfile" in scene
@@ -1884,7 +1920,7 @@ def test_table_layout_keeps_dining_islands_compact_instead_of_scattered():
 
 def test_table_layout_uses_subtle_color_coding_for_table_zones():
     adapter = (THREE_DIR / "state_adapter.js").read_text(encoding="utf-8")
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     for tok in (
         "tableColor",
@@ -1900,7 +1936,7 @@ def test_table_layout_uses_subtle_color_coding_for_table_zones():
 
 def test_table_layout_groups_tables_into_zones_with_clear_aisles():
     adapter = (THREE_DIR / "state_adapter.js").read_text(encoding="utf-8")
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
     for tok in (
         "TABLE_ZONE_AISLE_X",
         "TABLE_ROW_AISLE_Z",
@@ -2434,12 +2470,12 @@ def test_third_floor_side_windows_do_not_overlap_front_stalls():
 
 
 def test_canteen_scene_uses_mixed_table_and_chair_geometries():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
     for tok in (
         "_tableVariantForProfile",
-        "_addSquareTableCluster",
-        "_addLongTableCluster",
-        "_addBoothTableCluster",
+        "addSquareTableCluster",
+        "addLongTableCluster",
+        "addBoothTableCluster",
         "square four-seat table",
         "long communal table",
         "booth table",
@@ -2684,7 +2720,7 @@ def test_canteen_scene_1f_identity_cues_resolve_floor_footprint_before_use():
 
 
 def test_canteen_scene_1f_utility_cues_are_flat_not_solid_residual_blocks():
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     for tok in (
         "f1-condiment-station flat floor cue",
@@ -3018,7 +3054,7 @@ def test_minghu_2f_3f_tables_reduce_rear_strips_and_keep_center_weight():
 
 
 def test_canteen_scene_front_service_windows_are_large_enough_for_1f_focus_view():
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     for token in (
         "FRONT_WINDOW_COUNTER_SIZE",
@@ -3048,7 +3084,7 @@ def test_canteen_scene_front_service_windows_are_large_enough_for_1f_focus_view(
 
 
 def test_canteen_scene_front_windows_do_not_render_large_red_serving_blocks():
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     for token in (
         "const FRONT_WINDOW_STATUS_RAIL_IDLE_COLOR = 0x6f8790;",
@@ -3057,10 +3093,21 @@ def test_canteen_scene_front_windows_do_not_render_large_red_serving_blocks():
         "const FRONT_WINDOW_SERVING_LIGHT_SIZE = [9, 1.4, 1.0];",
         "front service status rail",
         "front service serving status light",
-        "this._photoMat(frontStatusRailColor",
-        "this._photoMat(FRONT_WINDOW_SERVING_LIGHT_COLOR",
     ):
         assert token in scene, f"front serving state should use a small status cue: {token}"
+    _assert_any_token(
+        scene,
+        ("this._photoMat(frontStatusRailColor", "photoMat(this.THREE, frontStatusRailColor"),
+        "front serving state should use a small status cue: status rail material",
+    )
+    _assert_any_token(
+        scene,
+        (
+            "this._photoMat(FRONT_WINDOW_SERVING_LIGHT_COLOR",
+            "photoMat(this.THREE, FRONT_WINDOW_SERVING_LIGHT_COLOR",
+        ),
+        "front serving state should use a small status cue: serving light material",
+    )
 
     assert "'red stall menu fascia'" not in scene
 
@@ -3142,7 +3189,7 @@ def test_canteen_scene_front_window_queue_heat_uses_thin_strip_not_red_cap():
 
 
 def test_canteen_scene_served_students_do_not_create_red_window_blocks():
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     assert "const STUDENT_SERVING_STATUS_COLOR = 0x5eead4;" in scene
     assert "if (student.position === 'being_served') return STUDENT_SERVING_STATUS_COLOR;" in scene
@@ -3478,3 +3525,51 @@ def test_student_paths_avoid_furniture_and_avatars_face_travel():
         cwd=REPO_ROOT, check=True, text=True, capture_output=True).stdout)
     assert payload["count"] > 0
     assert payload["inFoot"] is True
+
+
+def test_canteen_layouts_js_exists_and_exports():
+    """canteen_layouts.js must exist and export the layout contract surface."""
+    path = THREE_DIR / "canteen_layouts.js"
+    assert path.exists(), "canteen_layouts.js not found"
+    s = path.read_text(encoding="utf-8")
+    for symbol in (
+        "export const PALETTE",
+        "export const MINGHU_FLOOR_LAYOUTS",
+        "export const MINGHU_WINDOW_LABELS",
+        "export function defaultFootprint",
+        "export function normalizedFootprint",
+        "export function tableBlockPosition",
+        "export function stallTheme",
+        "export const STALL_THEME",
+    ):
+        assert symbol in s, f"missing export: {symbol!r}"
+
+
+def test_canteen_furniture_js_exists_and_exports():
+    """canteen_furniture.js must exist and export the primitive builders."""
+    path = THREE_DIR / "canteen_furniture.js"
+    assert path.exists(), "canteen_furniture.js not found"
+    s = path.read_text(encoding="utf-8")
+    for symbol in (
+        "export function meshMat",
+        "export function photoMat",
+        "export function addBox",
+        "export function addChair",
+        "export function addSquareTableCluster",
+        "export function addLongTableCluster",
+        "export function addBoothTableCluster",
+        "export function heatColor",
+    ):
+        assert symbol in s, f"missing export: {symbol!r}"
+
+
+def test_canteen_scene_still_exports_canteen_scene_class():
+    """Split modules must preserve CanteenScene and keep tick() rebuild-free."""
+    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    assert "export class CanteenScene" in s
+    tick_def = "    tick() {"
+    assert tick_def in s, f"method definition {tick_def!r} not found"
+    tick_start = s.index(tick_def)
+    tick_end = s.index("\n    }", tick_start)
+    tick_body = s[tick_start:tick_end]
+    assert "_rebuild" not in tick_body, "tick() must not call _rebuild directly"
