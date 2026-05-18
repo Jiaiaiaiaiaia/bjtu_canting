@@ -563,7 +563,7 @@ def test_state_adapter_uses_distinct_minghu_floor_layouts():
 
 
 def test_canteen_scene_renders_students_as_3d_avatars():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
     for tok in (
         "_studentAvatar",
         "CapsuleGeometry",
@@ -750,7 +750,7 @@ def test_canteen_scene_has_visible_vertical_transport_core():
 
 
 def test_canteen_scene_uses_balanced_building_and_focus_camera_proportions():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
     adapter = (THREE_DIR / "state_adapter.js").read_text(encoding="utf-8")
 
     for tok in (
@@ -1196,7 +1196,7 @@ def test_canteen_scene_uses_matte_service_window_effects():
 
 
 def test_canteen_scene_adds_stable_floor_depth_cues_without_shimmering_grids():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
 
     for tok in (
         "const FLOOR_EDGE_BAND_HEIGHT = 4.8;",
@@ -1364,7 +1364,7 @@ def test_3d_visuals_keep_low_glare_lighting_contract():
 
 
 def test_canteen_scene_declutters_window_labels_and_slows_focus_transition():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
 
     for tok in (
         "const FOCUS_SIDE_DURATION_MS = 1600;",
@@ -1651,7 +1651,7 @@ def test_table_layout_uses_fuller_representative_table_counts_per_floor():
 
 def test_table_layout_is_block_based_not_uniform_table_grid():
     adapter = (THREE_DIR / "state_adapter.js").read_text(encoding="utf-8")
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
     for tok in (
         "tableBlocks",
         "tableBlockPosition",
@@ -1747,7 +1747,7 @@ def test_table_layout_is_block_based_not_uniform_table_grid():
 
 def test_table_layout_uses_denser_perimeter_fill_without_losing_aisles():
     adapter = (THREE_DIR / "state_adapter.js").read_text(encoding="utf-8")
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
     for tok in (
         "f1-rear-fill-tables",
         "f2-rear-flex-fill",
@@ -2334,7 +2334,7 @@ def test_minghu_window_layouts_use_floor_specific_spacing():
 
 def test_third_floor_hotpot_window_uses_side_wall_layout():
     adapter = (THREE_DIR / "state_adapter.js").read_text(encoding="utf-8")
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     for tok in (
         "sideWindowCount",
@@ -3113,7 +3113,7 @@ def test_canteen_scene_front_windows_do_not_render_large_red_serving_blocks():
 
 
 def test_front_window_status_cue_does_not_render_as_dark_residual_block():
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     for token in (
         "const FRONT_WINDOW_STATUS_RAIL_SIZE = [12, 1.1, 0.8];",
@@ -3132,7 +3132,7 @@ def test_front_window_status_cue_does_not_render_as_dark_residual_block():
 
 
 def test_front_service_windows_restore_light_counters_without_dark_residual_blocks():
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     for token in (
         "const FRONT_WINDOW_COUNTER_SIZE = [24, 4.2, 6.2];",
@@ -3161,7 +3161,14 @@ def test_window_labels_do_not_draw_dark_backplate_blocks():
         assert token in scene, f"window label backplate should be removed: {token}"
 
     label_start = scene.index("_label(text, x, y, z")
-    label_end = scene.index("_photoMat(color", label_start)
+    label_end_candidates = [
+        idx for idx in (
+            scene.find("_photoMat(color", label_start),
+            scene.find("_floorSlabOpacity", label_start),
+        )
+        if idx >= 0
+    ]
+    label_end = min(label_end_candidates)
     label_block = scene[label_start:label_end]
     assert "ctx.roundRect?.(4, 4, 312, bgHeight, 10);" in label_block
     assert (
@@ -3171,7 +3178,7 @@ def test_window_labels_do_not_draw_dark_backplate_blocks():
 
 
 def test_canteen_scene_front_window_queue_heat_uses_thin_strip_not_red_cap():
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     for token in (
         "const FRONT_WINDOW_QUEUE_HEAT_STRIP_SIZE = [18, 0.9, 1.1];",
@@ -3316,7 +3323,7 @@ def test_minghu_1f_added_windows_do_not_overlap_service_counters():
 
 
 def test_canteen_scene_front_window_labels_are_centered_on_their_windows():
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     for token in (
         "const FRONT_WINDOW_LABEL_X_OFFSET = 0;",
@@ -3344,7 +3351,7 @@ def test_canteen_scene_top_view_is_zoomed_for_readable_floor_detail():
 
 
 def test_canteen_scene_window_label_texture_uses_high_resolution_no_mipmap():
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     for token in (
         "const LABEL_TEXTURE_SCALE = 3;",
@@ -3360,7 +3367,7 @@ def test_canteen_scene_window_label_texture_uses_high_resolution_no_mipmap():
 
 
 def test_canteen_scene_focus_floor_avoids_alpha_flicker_layers():
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     for token in (
         "const FOCUS_FLOOR_SLAB_OPACITY = 1.0;",
@@ -3376,7 +3383,7 @@ def test_service_stall_is_four_part_with_per_floor_theme():
     """Spec §A: each window renders signboard band + open-kitchen glass +
     base counter + tray rail/status strip, themed per floor, and keeps the
     intervention/label contract hooks."""
-    scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    scene = _canteen_scene_contract_source()
 
     # 4-part stall structure tokens (front and side share the vocabulary)
     for tok in (
@@ -3390,8 +3397,9 @@ def test_service_stall_is_four_part_with_per_floor_theme():
 
     # Per-floor theme table keyed by floor id (1 steel / 2 wood+brass / 3 dark wood)
     assert "STALL_THEME" in scene
+    theme_source = _optional_three_source("canteen_layouts.js") or scene
     for fid in ("1:", "2:", "3:"):
-        assert fid in scene.split("STALL_THEME", 1)[1][:600], \
+        assert fid in theme_source.split("STALL_THEME", 1)[1][:600], \
             f"STALL_THEME missing floor key {fid!r}"
 
     # Contract hooks preserved
