@@ -46,10 +46,10 @@ const FRONT_WINDOW_LABEL_X_OFFSET = 0;
 const FRONT_WINDOW_LABEL_Y_OFFSET = 20.4;
 const FRONT_WINDOW_LABEL_Z_OFFSET = -13.2;
 // Style B: 实体建筑·写实风格 — 暖象牙楼板 + 水泥墙体
-const FLOOR_SLAB_COLORS = [0xe8e2d8, 0xddd7cd];
+const FLOOR_SLAB_COLORS = [0xf0f4ee, 0xe3ece8];
 const FLOOR_TILE_COLOR = 0xf4f7f1;
 const FLOOR_SLAB_OPACITY = 0.055;
-const OVERVIEW_FLOOR_SLAB_OPACITY = 0.90;
+const OVERVIEW_FLOOR_SLAB_OPACITY = 0.07;
 const FOCUS_FLOOR_SLAB_OPACITY = 1.0;
 const FLOOR_SLAB_RENDER_ORDER = -4;
 const FLOOR_OUTLINE_OPACITY = 0.72;
@@ -57,8 +57,10 @@ const FLOOR_TILE_OUTLINE_OPACITY = 0.42;
 const FLOOR_EDGE_BAND_HEIGHT = 4.8;
 const FLOOR_EDGE_BAND_THICKNESS = 2.4;
 const FLOOR_EDGE_BAND_OPACITY = 0.95;
-const FLOOR_BACK_WALL_OPACITY = 0.82;
-const FLOOR_SIDE_WALL_OPACITY = 0.72;
+const FLOOR_BACK_WALL_OPACITY = 0.075;
+const FLOOR_SIDE_WALL_OPACITY = 0.035;
+const OVERVIEW_FLOOR_GRADIENT_Z_OFFSETS = [48, 12, -24];
+const OVERVIEW_FLOOR_GRADIENT_OPACITY = [1.0, 0.64, 0.38];
 // Style B 墙体 / 边框色（暖水泥灰）
 const FLOOR_WALL_COLOR = 0x8a7a6a;
 const FLOOR_EDGE_COLOR = 0x3a2e28;
@@ -75,7 +77,7 @@ const DEFAULT_FOOTPRINT_DEPTH = 180;
 const DEFAULT_CENTER_X = 160;
 const OVERVIEW_CAMERA_X = 160;
 const OVERVIEW_CAMERA_Z = 360;
-const OVERVIEW_CAMERA_Y_PADDING = 65;
+const OVERVIEW_CAMERA_Y_PADDING = 118;
 const OVERVIEW_LOOK_Y_RATIO = 0.54;
 const OVERVIEW_LOOK_Y_OFFSET = 18;
 const OVERVIEW_THREE_QUARTER_X_RATIO = 0.28;
@@ -103,8 +105,9 @@ const FOCUS_TOP_MIN_HEIGHT = 300;
 const FOCUS_EXPANDED_MIN_HEIGHT = 430;
 const VIEW_PRESET_FRONT_DISTANCE = 360;
 const VIEW_PRESET_SIDE_DISTANCE = 390;
-const VIEW_PRESET_TOP_HEIGHT = 460;
-const VIEW_PRESET_TOP_Z_OFFSET = 28;
+const VIEW_PRESET_TOP_HEIGHT = 380;
+const VIEW_PRESET_TOP_Z_OFFSET = 18;
+const DEFAULT_OVERVIEW_VIEW_PRESET = 'front';
 const TABLE_DX = 44;
 const TABLE_Z0 = 46;
 const TABLE_DZ = 15;
@@ -438,8 +441,10 @@ const MINGHU_FLOOR_LAYOUTS = {
               anchor: 'center', offsetX: 0, z: 40, dx: 38, dz: 26 },
             { id: 'f2-right-communal-bank', type: 'long', tableColor: 0x7d8d65, count: 12, cols: 3,
               anchor: 'right', right: 70, z: 2, dx: 42, dz: 30 },
-            { id: 'f2-rear-flex-fill', type: 'square', tableColor: 0xb9856f, count: 12, cols: 6,
-              anchor: 'center', offsetX: -4, z: 184, dx: 36, dz: 26 },
+            { id: 'f2-mid-right-flex-fill', type: 'square', tableColor: 0xb9856f, count: 6, cols: 3,
+              anchor: 'right', right: 70, z: 148, dx: 38, dz: 30 },
+            { id: 'f2-rear-flex-fill', type: 'square', tableColor: 0xb9856f, count: 6, cols: 3,
+              anchor: 'center', offsetX: -80, z: 167, dx: 40, dz: 33 },
         ],
         tableVariants: ['long', 'square', 'square', 'long', 'square'],
         cueColor: 0xe7bd63,
@@ -464,17 +469,17 @@ const MINGHU_FLOOR_LAYOUTS = {
         queueBufferDepth: 92,
         tableBlocks: [
             { id: 'f3-wall-booth-run', type: 'booth', tableColor: 0x7a5a40, count: 6, cols: 1,
-              anchor: 'left', left: 84, z: 0, dx: 0, dz: 28 },
-            { id: 'f3-central-dining-cluster', type: 'square', tableColor: 0x9b7d55, count: 16, cols: 4,
-              anchor: 'center', offsetX: 12, z: 28, dx: 34, dz: 28 },
-            { id: 'f3-left-mid-square-infill', type: 'square', tableColor: 0x8f7d67, count: 4, cols: 2,
-              anchor: 'left', left: 128, z: 98, dx: 34, dz: 28 },
-            { id: 'f3-east-mid-square-infill', type: 'square', tableColor: 0x8aa092, count: 6, cols: 3,
-              anchor: 'right', right: 112, z: 82, dx: 34, dz: 28 },
-            { id: 'f3-rear-hotpot-communal', type: 'long', tableColor: 0x835f42, count: 14, cols: 7,
-              anchor: 'center', offsetX: 8, z: 202, dx: 42, dz: 30 },
+              anchor: 'left', left: 58, z: 0, dx: 0, dz: 28 },
+            { id: 'f3-central-dining-cluster', type: 'square', tableColor: 0x9b7d55, count: 18, cols: 3,
+              anchor: 'center', offsetX: -10, z: 20, dx: 44, dz: 26 },
+            { id: 'f3-left-mid-square-infill', type: 'square', tableColor: 0x8f7d67, count: 6, cols: 2,
+              anchor: 'left', left: 126, z: 100, dx: 40, dz: 30 },
+            { id: 'f3-east-mid-square-infill', type: 'square', tableColor: 0x8aa092, count: 8, cols: 2,
+              anchor: 'right', right: 136, z: 64, dx: 42, dz: 32 },
+            { id: 'f3-rear-hotpot-communal', type: 'long', tableColor: 0x835f42, count: 8, cols: 4,
+              anchor: 'center', offsetX: 44, z: 176, dx: 46, dz: 28 },
             { id: 'f3-right-window-booth-run', type: 'booth', tableColor: 0x4e6b70, count: 6, cols: 1,
-              anchor: 'right', right: 96, z: 18, dx: 0, dz: 32 },
+              anchor: 'right', right: 68, z: 0, dx: 0, dz: 32 },
         ],
         tableVariants: ['booth', 'square', 'booth', 'long', 'square'],
         cueColor: 0x8b5cf6,
@@ -527,7 +532,7 @@ export class CanteenScene {
         this.focusFloorId = null;
         this.focusTransitionStage = 'overview'; // 'overview' | 'side' | 'top' | 'expanded'
         this.focusTransitionStartedAt = 0;
-        this.viewPreset = 'overview';   // 'overview' | 'front' | 'side' | 'top' | 'free'
+        this.viewPreset = DEFAULT_OVERVIEW_VIEW_PRESET;   // 'overview' | 'front' | 'side' | 'top' | 'free'
         this.trackedStudentId = null;
         this._floorGroups = new Map(); // floorId -> THREE.Group（用于聚焦可见性控制）
         this._floorSlide = new Map();  // floorId -> 当前位移（focus 下固定归零）
@@ -574,7 +579,7 @@ export class CanteenScene {
         this.focusFloorId = null;
         this.focusTransitionStage = 'overview';
         this.focusTransitionStartedAt = 0;
-        this.viewPreset = 'overview';
+        this.viewPreset = DEFAULT_OVERVIEW_VIEW_PRESET;
         this.trackedStudentId = null;
         this._recomputeCameraTarget();
         this._lastFrame && this._rebuild(this._lastFrame);
@@ -718,7 +723,9 @@ export class CanteenScene {
         const isFocusedFloor = this.mode === 'focus'
             && this.focusFloorId != null
             && floor?.floor_id === this.focusFloorId;
-        return isFocusedFloor ? FOCUS_FLOOR_SLAB_OPACITY : OVERVIEW_FLOOR_SLAB_OPACITY;
+        return isFocusedFloor
+            ? FOCUS_FLOOR_SLAB_OPACITY
+            : OVERVIEW_FLOOR_SLAB_OPACITY * this._floorGradientOpacityScale(floor);
     }
 
     _floorSlabMaterial(color, opacity) {
@@ -726,15 +733,90 @@ export class CanteenScene {
             color,
             transparent: opacity < 0.98,
             opacity,
-            depthWrite: true,
+            depthWrite: opacity >= 0.98,
             depthTest: true,
             toneMapped: false,
         });
         mat.forceSinglePass = true;
         mat.polygonOffset = true;
+        // Effective negative depth bias: nudge the ultra-translucent overview
+        // slab toward camera so it resolves consistently against near-coplanar
+        // bottom geometry (ground/plinth/interfloor-shadow/footprint outline)
+        // instead of z-fighting it. Fixes overview 1F floor flicker; a zeroed
+        // offset (the previous value) was a no-op and did not separate them.
         mat.polygonOffsetFactor = -1;
         mat.polygonOffsetUnits = -1;
         return mat;
+    }
+
+    _floorGradientDisplay(floor) {
+        // floor gradient display: 1F pulled forward, upper floors fade back.
+        if (this.mode === 'focus') return { zOffset: 0, opacityScale: 1 };
+        const idx = Math.max(0, floor?.index ?? 0);
+        const zOffset = OVERVIEW_FLOOR_GRADIENT_Z_OFFSETS[
+            Math.min(idx, OVERVIEW_FLOOR_GRADIENT_Z_OFFSETS.length - 1)
+        ] ?? 0;
+        const opacityScale = OVERVIEW_FLOOR_GRADIENT_OPACITY[
+            Math.min(idx, OVERVIEW_FLOOR_GRADIENT_OPACITY.length - 1)
+        ] ?? 1;
+        return { zOffset, opacityScale };
+    }
+
+    _floorGradientOpacityScale(floor) {
+        return this._floorGradientDisplay(floor).opacityScale;
+    }
+
+    _floorGradientZOffset(floor) {
+        return this._floorGradientDisplay(floor).zOffset;
+    }
+
+    _floorGradientZOffsetForFloorId(floorId) {
+        const floor = this._lastFrame?.floors.find(fl => fl.floor_id === floorId);
+        return this._floorGradientZOffset(floor);
+    }
+
+    _floorSwitchGradientDelta(student, floorId) {
+        if (student?.position !== 'floor_switching') return 0;
+        const fromFloorId = Number.isFinite(student.from_floor_id)
+            ? student.from_floor_id
+            : floorId;
+        const targetFloorId = Number.isFinite(student.target_floor_id)
+            ? student.target_floor_id
+            : fromFloorId;
+        const progress = Math.max(0, Math.min(1, student.floor_switch_progress || 0));
+        const baseZOffset = this._floorGradientZOffsetForFloorId(floorId);
+        const fromZOffset = this._floorGradientZOffsetForFloorId(fromFloorId);
+        const targetZOffset = this._floorGradientZOffsetForFloorId(targetFloorId);
+        const worldZOffset = fromZOffset + progress * (targetZOffset - fromZOffset);
+        return worldZOffset - baseZOffset;
+    }
+
+    _applyFloorGradientMaterial(mat, floor) {
+        if (!mat || this.mode === 'focus') return mat;
+        mat.userData = mat.userData || {};
+        if (mat.userData.floorGradientApplied) return mat;
+        const opacityScale = this._floorGradientOpacityScale(floor);
+        if (opacityScale >= 0.999) {
+            mat.userData.floorGradientApplied = true;
+            return mat;
+        }
+        const opacity = (mat.opacity == null ? 1 : mat.opacity) * opacityScale;
+        mat.opacity = opacity;
+        mat.transparent = opacity < 0.98;
+        if ('depthWrite' in mat) mat.depthWrite = opacity >= 0.98;
+        mat.userData.floorGradientApplied = true;
+        mat.needsUpdate = true;
+        return mat;
+    }
+
+    _applyFloorGradientToGroup(group, floor) {
+        group.traverse?.(node => {
+            if (Array.isArray(node.material)) {
+                node.material.forEach(mat => this._applyFloorGradientMaterial(mat, floor));
+            } else {
+                this._applyFloorGradientMaterial(node.material, floor);
+            }
+        });
     }
 
     _box(group, name, size, pos, mat, userData) {
@@ -798,7 +880,7 @@ export class CanteenScene {
         // floor surface must not hide lower levels in overview, while focused
         // single-floor mode uses an opaque slab to avoid transparent alpha shimmer.
         mesh.material.transparent = mesh.material.opacity < 0.98;
-        mesh.material.depthWrite = true;
+        mesh.material.depthWrite = mesh.material.opacity >= 0.98;
         mesh.material.needsUpdate = true;
         mesh.renderOrder = FLOOR_SLAB_RENDER_ORDER;
         // transparent floor surfaces should not receive shadow-map stripes.
@@ -1211,7 +1293,7 @@ export class CanteenScene {
         });
     }
 
-    _addElevatorCore(group, floors, topY, floorHeight, buildingFootprint) {
+    _addElevatorCore(group, floors, topY, floorHeight, buildingFootprint, floorZOffset = () => 0) {
         const shaftX = buildingFootprint.minX + SIDE_ENTRANCE_X - 3.5;
         const shaftZ = buildingFootprint.centerZ;
         const shaftHeight = topY + floorHeight + 8;
@@ -1265,11 +1347,12 @@ export class CanteenScene {
 
         floors.forEach(floor => {
             const baseY = floor.baseY || 0;
+            const zOffset = floorZOffset(floor);
             this._box(
                 group,
                 'elevator landing bridge',
                 [24, 1.8, 15],
-                [shaftX + 12, baseY + 5.3, shaftZ],
+                [shaftX + 12, baseY + 5.3, shaftZ + zOffset],
                 this._photoMat(0x33404a, {
                     opacity: 0.92,
                     roughness: 0.32,
@@ -1282,7 +1365,7 @@ export class CanteenScene {
                 group,
                 'elevator floor door',
                 [1.2, 12, 12],
-                [shaftX + 8.4, baseY + 11.5, shaftZ],
+                [shaftX + 8.4, baseY + 11.5, shaftZ + zOffset],
                 this._photoMat(0xcfe9ee, {
                     opacity: 0.62,
                     roughness: 0.12,
@@ -1294,11 +1377,18 @@ export class CanteenScene {
         });
 
         for (let i = 0; i < floors.length - 1; i += 1) {
+            // stair core follows front floor gradient display, so the demo
+            // steps still connect to floors after 1F is pulled forward.
+            const lowerFloor = floors[i];
+            const upperFloor = floors[i + 1];
+            const lowerZOffset = floorZOffset(lowerFloor);
+            const upperZOffset = floorZOffset(upperFloor);
             const lower = floors[i].baseY || 0;
             const upper = floors[i + 1].baseY || 0;
             const span = Math.max(1, upper - lower);
             for (let step = 0; step < 8; step += 1) {
                 const t = step / 7;
+                const baseZ = entranceLowerZ + t * stairZSpan;
                 this._box(
                     group,
                     'stair step stack',
@@ -1306,7 +1396,7 @@ export class CanteenScene {
                     [
                         shaftX + 12.5,
                         lower + 13 + t * (span - 6),
-                        entranceLowerZ + t * stairZSpan,
+                        baseZ + lowerZOffset + t * (upperZOffset - lowerZOffset),
                     ],
                     this._photoMat(0xd7e0dc, { roughness: 0.42 }),
                     { kind: 'stairCore' }
@@ -1316,7 +1406,11 @@ export class CanteenScene {
                 group,
                 'stair handrail',
                 [1.2, span - 8, 1.2],
-                [shaftX + 30, lower + span / 2 + 8, shaftZ],
+                [
+                    shaftX + 30,
+                    lower + span / 2 + 8,
+                    shaftZ + lowerZOffset + 0.5 * (upperZOffset - lowerZOffset),
+                ],
             this._photoMat(PALETTE.flow, {
                 opacity: 0.8,
                 roughness: 0.28,
@@ -2037,7 +2131,7 @@ export class CanteenScene {
         const p = student.position3d || student.target;
         const avatar = new THREE.Group();
         avatar.name = 'studentAvatar';
-        avatar.position.set(p.x, p.y, p.z);
+        avatar.position.set(p.x, p.y, p.z + this._floorSwitchGradientDelta(student, floorId));
         avatar.userData = { floorId, kind: 'student', studentId: student.id };
 
         // Face the direction of travel: rotate only when there is a real
@@ -2148,12 +2242,35 @@ export class CanteenScene {
             stairCore.userData = { kind: 'stairCore' };
             this.group.add(stairCore);
         });
-        this._addElevatorCore(this.group, frame.floors, topY, FLOOR_H, buildingFootprint);
+        this._addElevatorCore(
+            this.group,
+            frame.floors,
+            topY,
+            FLOOR_H,
+            buildingFootprint,
+            floor => this._floorGradientZOffset(floor)
+        );
+        if (this.mode === 'overview') {
+            this._addOpenBuildingFrame(this.group, buildingFootprint, frame.floors, FLOOR_H);
+            const title = this._label(
+                frame.displayName || '明湖食堂',
+                buildingFootprint.centerX,
+                topY + FLOOR_H + 30,
+                buildingFootprint.centerZ,
+                PALETTE.labelKpi,
+                0.92,
+                1.0
+            );
+            title.name = 'overview-only canteen title';
+            this.group.add(title);
+        }
 
         frame.floors.forEach(floor => {
             const fg = new THREE.Group();
             fg.userData = { floorId: floor.floor_id, kind: 'floor' };
             this._floorGroups.set(floor.floor_id, fg);
+            const gradient = this._floorGradientDisplay(floor);
+            fg.position.z = gradient.zOffset;
 
             // 楼层基准 Y（frame 给的 baseY 已带 index*FLOOR_V 偏移）
             const baseY = floor.baseY;
@@ -2200,23 +2317,26 @@ export class CanteenScene {
 
             const backWall = new THREE.Mesh(
                 new THREE.BoxGeometry(footprint.width, WALL_H, 2),
-                this._mat(FLOOR_WALL_COLOR, FLOOR_BACK_WALL_OPACITY)
+                this._mat(0xbdebf2, FLOOR_BACK_WALL_OPACITY)
             );
             backWall.position.set(footprint.centerX, wallCY, footprint.minZ + 1);
+            this._applyFloorGradientMaterial(backWall.material, floor);
             fg.add(backWall);
 
             const leftWall = new THREE.Mesh(
                 new THREE.BoxGeometry(2, WALL_H, footprint.depth),
-                this._mat(FLOOR_WALL_COLOR, FLOOR_SIDE_WALL_OPACITY)
+                this._mat(0xbdebf2, FLOOR_SIDE_WALL_OPACITY)
             );
             leftWall.position.set(footprint.minX, wallCY, fz);
+            this._applyFloorGradientMaterial(leftWall.material, floor);
             fg.add(leftWall);
 
             const rightWall = new THREE.Mesh(
                 new THREE.BoxGeometry(2, WALL_H, footprint.depth),
-                this._mat(FLOOR_WALL_COLOR, FLOOR_SIDE_WALL_OPACITY)
+                this._mat(0xbdebf2, FLOOR_SIDE_WALL_OPACITY)
             );
             rightWall.position.set(footprint.maxX, wallCY, fz);
+            this._applyFloorGradientMaterial(rightWall.material, floor);
             fg.add(rightWall);
 
             this._addWallDepthCues(fg, footprint, baseY, floor.floor_id);
@@ -2238,6 +2358,7 @@ export class CanteenScene {
                 fg.add(this._studentAvatar(student, floor.floor_id));
             });
 
+            this._applyFloorGradientToGroup(fg, floor);
             this.group.add(fg);
         });
     }
@@ -2352,8 +2473,8 @@ export class CanteenScene {
             : topY + Math.max(180, buildingFootprint.width * 0.62);
         const topHeight = Math.max(
             VIEW_PRESET_TOP_HEIGHT,
-            focusFloor ? footprint.width * 0.94 : topY + buildingFootprint.width * 0.84,
-            footprint.depth * 1.50
+            focusFloor ? footprint.width * 0.78 : topY + buildingFootprint.width * 0.68,
+            footprint.depth * 1.22
         );
 
         switch (this.viewPreset) {
@@ -2427,13 +2548,12 @@ export class CanteenScene {
         } else {
             // A 总览：正面居中视角，X 居中，Y 在楼层中段偏上，Z 正前方适当距离。
             // 3/4 斜俯视角：X 偏右+侧面可见，Y 高于楼顶，Z 正前方
-            const obliqueX = buildingFootprint.centerX + buildingFootprint.width * 0.35;
-            const obliqueY = topY + 180;
-            const obliqueZ = Math.max(OVERVIEW_CAMERA_Z, buildingFootprint.maxZ + 320);
-            const lookX = buildingFootprint.centerX - buildingFootprint.width * 0.05;
-            const lookY = topY * 0.42 + OVERVIEW_LOOK_Y_OFFSET;
+            const centerY = topY * OVERVIEW_LOOK_Y_RATIO + OVERVIEW_LOOK_Y_OFFSET;
+            const obliqueX = buildingFootprint.centerX + Math.max(OVERVIEW_THREE_QUARTER_MIN_X, buildingFootprint.width * OVERVIEW_THREE_QUARTER_X_RATIO);
+            const obliqueY = topY + Math.max(OVERVIEW_CAMERA_Y_PADDING + OVERVIEW_THREE_QUARTER_Y_PADDING, buildingFootprint.width * OVERVIEW_THREE_QUARTER_HEIGHT_RATIO);
+            const obliqueZ = Math.max(OVERVIEW_CAMERA_Z, buildingFootprint.maxZ + 250) + Math.max(OVERVIEW_THREE_QUARTER_Z_PADDING, buildingFootprint.depth * OVERVIEW_THREE_QUARTER_DEPTH_RATIO);
             this._camTarget.pos.set(obliqueX, obliqueY, obliqueZ);
-            this._camTarget.look.set(lookX, lookY, buildingFootprint.centerZ);
+            this._camTarget.look.set(buildingFootprint.centerX + buildingFootprint.width * OVERVIEW_LOOK_PANEL_CLEARANCE_X_RATIO, centerY, buildingFootprint.centerZ);
         }
     }
 
@@ -2446,8 +2566,11 @@ export class CanteenScene {
     // focus mode renders selected floor only; overview restores every floor group.
     _animateFloors() {
         this._floorGroups.forEach((fg, floorId) => {
+            const floor = this._lastFrame?.floors.find(fl => fl.floor_id === floorId);
+            const gradient = this._floorGradientDisplay(floor);
             fg.visible = this.mode !== 'focus' || this.focusFloorId == null || floorId === this.focusFloorId;
             fg.position.x = 0;
+            fg.position.z = gradient.zOffset;
             this._floorSlide.set(floorId, 0);
         });
     }
