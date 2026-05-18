@@ -15,10 +15,10 @@ PYTHONPATH=backend ./.venv/bin/python backend/app.py
 
 ## 当前系统形态
 
-- 单食堂模式仍是 Phase 2 兼容基线，继续使用 `/api/config` 与 `/api/simulation/*`。
-- 校园联合模式走独立 `/api/campus/*`，后端由 SimPy `CampusCoordinator` 协调多食堂、学生路由、步行与统计。
-- 默认校园预设是演示规模 runtime：明湖/学一与学四参与仿真；学活只作为待补点位显示，不参与路由、排队或统计。
-- 前端默认提供 2D 校园地图 / 食堂楼层视图，并提供可选 Three.js 3D 视图；2D 仍作为 fallback。
+- 当前主体验是 3D 单食堂就餐仿真 / digital twin，默认进入明湖食堂三层视图。
+- Phase 2 兼容基线继续保留 `/api/config` 与 `/api/simulation/*`。
+- `/api/campus/*` 作为当前 3D 单食堂演示的技术入口复用，前端叙事保持一个食堂。
+- 2D 视图继续作为 fallback、调试和兼容界面保留。
 - 浏览器 E2E 证据记录在 `docs/phase3/browser_e2e_check.md`，截图在 `docs/phase3/screenshots/`。
 
 ## 验证命令
@@ -27,7 +27,6 @@ PYTHONPATH=backend ./.venv/bin/python backend/app.py
 PYTHONPATH=backend ./.venv/bin/python -m pytest backend/tests -q
 node --check frontend/static/js/main.js
 node --check frontend/static/js/campus.js
-node --check frontend/static/js/campus_map.js
 node --check frontend/static/js/floor_tabs.js
 node --input-type=module --check < frontend/static/js/three/scene3d.js
 ```
@@ -40,10 +39,10 @@ Canteen/
 │   ├── app.py                     # Flask 入口
 │   ├── simulation/                # 仿真引擎模块
 │   │   ├── engine.py              # 单食堂兼容门面
-│   │   ├── coordinator.py         # 校园联合 SimPy 协调器
-│   │   ├── router.py              # 学生路由/切换
-│   │   └── presets/               # 校园/食堂预设数据
-│   └── api/                       # 单食堂与校园 API
+│   │   ├── coordinator.py         # SimPy 协调器（当前服务单食堂 3D 演示）
+│   │   ├── router.py              # 学生楼层/窗口选择与切换
+│   │   └── presets/               # 食堂预设数据
+│   └── api/                       # 单食堂兼容 API 与 3D 演示 API
 ├── frontend/                      # 前端（HTML + ECharts + Canvas + Three.js）
 │   ├── templates/index.html
 │   └── static/
@@ -51,7 +50,6 @@ Canteen/
 │       └── js/
 │           ├── main.js
 │           ├── campus.js
-│           ├── campus_map.js
 │           ├── floor_tabs.js
 │           └── three/
 ├── database/                      # SQLite 数据库（运行时生成）
@@ -66,6 +64,5 @@ Canteen/
 - 离散事件驱动仿真引擎
 - Canvas 食堂布局与 ECharts 数据统计可视化
 - SQLite 快照记录，可查历史
-- 校园联合仿真：多食堂路由、步行中学生、食堂下钻、楼层 Tab
-- 默认校园预设入口与待补数据提示
-- 可选 Three.js 3D 沙盘视图
+- 3D 单食堂视图：楼层切换、窗口状态、学生轨迹、桌椅布局、楼梯与多角度展示
+- 2D fallback 视图与楼层 Tab

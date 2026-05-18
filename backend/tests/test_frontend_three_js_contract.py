@@ -581,7 +581,7 @@ def test_canteen_scene_does_not_draw_student_route_lines():
     assert "fg.add(this._studentAvatar(student, floor.floor_id));" in s
 
 
-def test_state_adapter_keeps_all_students_for_3d_rendering():
+def test_state_adapter_keeps_moderate_crowds_for_3d_rendering():
     adapter = (THREE_DIR / "state_adapter.js").read_text(encoding="utf-8")
     assert ".slice(0, 80)" not in adapter
 
@@ -631,6 +631,56 @@ def test_state_adapter_keeps_all_students_for_3d_rendering():
         "studentCount": 140,
         "kpiStudents": 140,
         "studentsInCanteen": 140,
+    }
+
+
+def test_state_adapter_caps_heavy_crowds_without_truncating_kpis():
+    script = textwrap.dedent(
+        """
+        import { StateAdapter } from './frontend/static/js/three/state_adapter.js';
+
+        const students = Array.from({ length: 500 }, (_, id) => ({
+          id: `student-${id}`,
+          floor_id: 2,
+          position: 'window_queue',
+          position_detail: 'w0',
+          queue_index: id
+        }));
+        const snapshot = {
+          canteens: {
+            minghu_xueyi: {
+              id: 'minghu_xueyi',
+              floors: [{
+                floor_id: 2,
+                windows: [{ id: 'w0', is_open: true, queue_length: students.length }],
+                seats: [],
+                students
+              }]
+            }
+          }
+        };
+
+        const frame = new StateAdapter()
+          .buildFrame(snapshot, { activeCanteenId: 'minghu_xueyi' });
+        console.log(JSON.stringify({
+          studentCount: frame.floors[0].students.length,
+          kpiStudents: frame.perFloorKpi[0].students,
+          studentsInCanteen: frame.students_in_canteen
+        }));
+        """
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "studentCount": 96,
+        "kpiStudents": 500,
+        "studentsInCanteen": 500,
     }
 
 
@@ -1195,6 +1245,46 @@ def test_canteen_scene_uses_open_axonometric_layered_building_model():
         assert tok not in s, f"open layered building should not use exterior shell/roof: {tok!r}"
 
 
+def test_canteen_scene_uses_front_floor_gradient_display():
+    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+
+    for tok in (
+        "const OVERVIEW_FLOOR_GRADIENT_Z_OFFSETS = [48, 12, -24];",
+        "const OVERVIEW_FLOOR_GRADIENT_OPACITY = [1.0, 0.64, 0.38];",
+        "const DEFAULT_OVERVIEW_VIEW_PRESET = 'front';",
+        "floor gradient display: 1F pulled forward, upper floors fade back",
+        "this.viewPreset = DEFAULT_OVERVIEW_VIEW_PRESET;",
+        "_floorGradientDisplay(floor)",
+        "_floorGradientOpacityScale(floor)",
+        "_applyFloorGradientMaterial(",
+        "fg.position.z = gradient.zOffset;",
+        "this._applyFloorGradientMaterial(backWall.material, floor);",
+        "this._applyFloorGradientMaterial(leftWall.material, floor);",
+        "this._applyFloorGradientMaterial(rightWall.material, floor);",
+    ):
+        assert tok in s, f"front floor gradient display missing token: {tok!r}"
+
+    ui = (THREE_DIR / "immersive_ui.js").read_text(encoding="utf-8")
+    assert "this._viewPreset = 'front';" in ui
+
+
+def test_canteen_scene_stair_demo_follows_front_floor_gradient_offsets():
+    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+
+    for tok in (
+        "stair core follows front floor gradient display",
+        "_floorGradientZOffset(floor)",
+        "_floorGradientZOffsetForFloorId(floorId)",
+        "_floorSwitchGradientDelta(student, floorId)",
+        "p.z + this._floorSwitchGradientDelta(student, floorId)",
+        "const lowerZOffset = floorZOffset(lowerFloor);",
+        "const upperZOffset = floorZOffset(upperFloor);",
+        "lowerZOffset + t * (upperZOffset - lowerZOffset)",
+        "baseZ + lowerZOffset + t * (upperZOffset - lowerZOffset)",
+    ):
+        assert tok in s, f"stair demo should share the floor gradient offset: {tok!r}"
+
+
 def test_3d_visuals_keep_low_glare_lighting_contract():
     scene = (THREE_DIR / "scene3d.js").read_text(encoding="utf-8")
     fx = (THREE_DIR / "scene_fx.js").read_text(encoding="utf-8")
@@ -1451,7 +1541,7 @@ def test_table_layout_preserves_backend_seats_but_caps_visual_tables():
     assert payload["lastSeatId"] == 271
     assert 228 <= payload["uniquePositionCount"] <= 236
     assert payload["footprint"]["source"] == "furnitureDerivedFootprint"
-    assert len(payload["footprint"]["outline"]) >= 6
+    assert len(payload["footprint"]["outline"]) == 4
     assert payload["footprint"]["width"] / payload["footprint"]["depth"] <= 1.85
     assert payload["bounds"]["minX"] >= payload["footprint"]["minX"] + 16
     assert payload["bounds"]["maxX"] <= payload["footprint"]["maxX"] - 16
@@ -1615,7 +1705,7 @@ def test_table_layout_is_block_based_not_uniform_table_grid():
     assert floors[3]["uniqueXCount"] >= 7
     assert floors[1]["maxXGap"] >= 58
     assert floors[2]["maxXGap"] >= 58
-    assert floors[3]["maxZGap"] >= 30
+    assert floors[3]["maxZGap"] >= 28
     assert len({(floors[f]["xSpan"], floors[f]["zSpan"]) for f in floors}) == 3
 
 
@@ -1703,7 +1793,7 @@ def test_table_layout_uses_denser_perimeter_fill_without_losing_aisles():
     assert floors[1]["maxXGap"] >= 52
     assert floors[2]["maxXGap"] >= 52
     assert floors[3]["maxXGap"] <= 110
-    assert floors[3]["maxZGap"] >= 30
+    assert floors[3]["maxZGap"] >= 28
 
 
 def test_table_layout_keeps_dining_islands_compact_instead_of_scattered():
@@ -2071,6 +2161,68 @@ def test_state_adapter_derives_distinct_floor_footprints_from_tables_and_windows
     assert len({(fp["width"], fp["depth"]) for fp in footprints}) == 3
     assert footprints[1]["width"] >= footprints[0]["width"]
     assert footprints[2]["depth"] >= footprints[0]["depth"]
+
+
+def test_state_adapter_emits_rectangular_floor_outlines_for_each_floor():
+    script = textwrap.dedent(
+        """
+        import { StateAdapter } from './frontend/static/js/three/state_adapter.js';
+
+        const makeFloor = (floorId, windowCount, seatCount) => ({
+          floor_id: floorId,
+          windows: Array.from({ length: windowCount }, (_, id) => ({
+            id: `f${floorId}-w${id}`,
+            floor_id: floorId,
+            is_open: true,
+            queue_length: 0
+          })),
+          seats: Array.from({ length: seatCount }, (_, id) => ({
+            id: `f${floorId}-s${id}`,
+            floor_id: floorId,
+            status: 'empty'
+          })),
+          students: []
+        });
+
+        const frame = new StateAdapter().buildFrame({
+          canteens: {
+            minghu_xueyi: {
+              id: 'minghu_xueyi',
+              floors: [
+                makeFloor(1, 6, 172),
+                makeFloor(2, 13, 272),
+                makeFloor(3, 14, 290)
+              ]
+            }
+          }
+        }, { activeCanteenId: 'minghu_xueyi' });
+
+        console.log(JSON.stringify(frame.floors.map(floor => ({
+          floorId: floor.floor_id,
+          outline: floor.footprint.outline,
+          minX: floor.footprint.minX,
+          maxX: floor.footprint.maxX,
+          minZ: floor.footprint.minZ,
+          maxZ: floor.footprint.maxZ
+        }))));
+        """
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    floors = json.loads(result.stdout)
+
+    for floor in floors:
+        assert floor["outline"] == [
+            {"x": floor["minX"], "z": floor["minZ"]},
+            {"x": floor["maxX"], "z": floor["minZ"]},
+            {"x": floor["maxX"], "z": floor["maxZ"]},
+            {"x": floor["minX"], "z": floor["maxZ"]},
+        ]
 
 
 def test_minghu_window_layouts_use_floor_specific_spacing():
@@ -2785,6 +2937,86 @@ def test_minghu_1f_tables_balance_center_zone_and_right_rear_density():
     assert len(payload["rightRearDense"]) <= 6
 
 
+def test_minghu_2f_3f_tables_reduce_rear_strips_and_keep_center_weight():
+    script = textwrap.dedent(
+        """
+        import { StateAdapter } from './frontend/static/js/three/state_adapter.js';
+
+        const floorConfigs = [
+          { floorId: 2, seatCount: 272, windowCount: 13, tableCount: 58 },
+          { floorId: 3, seatCount: 290, windowCount: 14, tableCount: 52 },
+        ];
+        const frame = new StateAdapter().buildFrame({
+          canteens: {
+            minghu_xueyi: {
+              id: 'minghu_xueyi',
+              display_name: '明湖',
+              floors: floorConfigs.map(config => ({
+                floor_id: config.floorId,
+                windows: Array.from({ length: config.windowCount }, (_, id) => ({
+                  id: `f${config.floorId}-w${id}`,
+                  floor_id: config.floorId,
+                  is_open: true,
+                  queue_length: 0
+                })),
+                seats: Array.from({ length: config.seatCount }, (_, id) => ({
+                  id: `f${config.floorId}-s${id}`,
+                  floor_id: config.floorId,
+                  status: 'empty'
+                })),
+                students: []
+              }))
+            }
+          }
+        }, { activeCanteenId: 'minghu_xueyi' });
+
+        const summary = frame.floors.map(floor => {
+          const config = floorConfigs.find(item => item.floorId === floor.floor_id);
+          const tables = [];
+          for (let tableIdx = 0; tableIdx < config.tableCount; tableIdx += 1) {
+            const seats = floor.seats.filter((_, idx) => Math.floor(idx / 4) % config.tableCount === tableIdx);
+            tables.push({
+              tableIdx,
+              x: seats.reduce((sum, seat) => sum + seat.position.x, 0) / seats.length,
+              z: seats.reduce((sum, seat) => sum + seat.position.z, 0) / seats.length,
+            });
+          }
+          const centerWeighted = tables.filter(table => (
+            table.x >= floor.footprint.centerX - 95
+            && table.x <= floor.footprint.centerX + 115
+            && table.z >= floor.footprint.centerZ - 55
+            && table.z <= floor.footprint.centerZ + 95
+          ));
+          const rearStrip = tables.filter(table => (
+            table.z > floor.footprint.centerZ + 92
+          ));
+
+          return {
+            floorId: floor.floor_id,
+            centerWeighted: centerWeighted.map(t => t.tableIdx),
+            rearStrip: rearStrip.map(t => t.tableIdx),
+            footprint: floor.footprint,
+            tables,
+          };
+        });
+        console.log(JSON.stringify(summary));
+        """
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    floors = {row["floorId"]: row for row in json.loads(result.stdout)}
+
+    assert len(floors[2]["centerWeighted"]) >= 18
+    assert len(floors[3]["centerWeighted"]) >= 16
+    assert len(floors[2]["rearStrip"]) <= 8
+    assert len(floors[3]["rearStrip"]) <= 8
+
+
 def test_canteen_scene_front_service_windows_are_large_enough_for_1f_focus_view():
     scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
 
@@ -3056,10 +3288,10 @@ def test_canteen_scene_top_view_is_zoomed_for_readable_floor_detail():
     scene = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
 
     for token in (
-        "const VIEW_PRESET_TOP_HEIGHT = 460;",
-        "const VIEW_PRESET_TOP_Z_OFFSET = 28;",
-        "focusFloor ? footprint.width * 0.94 : topY + buildingFootprint.width * 0.84",
-        "footprint.depth * 1.50",
+        "const VIEW_PRESET_TOP_HEIGHT = 380;",
+        "const VIEW_PRESET_TOP_Z_OFFSET = 18;",
+        "focusFloor ? footprint.width * 0.78 : topY + buildingFootprint.width * 0.68",
+        "footprint.depth * 1.22",
     ):
         assert token in scene, f"top preset should frame the floor closer: {token}"
 

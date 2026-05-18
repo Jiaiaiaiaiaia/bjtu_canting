@@ -32,6 +32,8 @@ const STAIR_CORE_WIDTH = 44;
 const SIDE_ENTRANCE_X = -10;   // fallback：实际入口 x 由 footprint.minX - 10 推导
 const SIDE_ENTRANCE_ZS = [28, 68]; // fallback：实际入口 z 由 footprint.depth 的 30%/70% 推导
 const STUDENT_Y = 7;
+const MAX_UNCAPPED_STUDENTS_PER_FRAME = 180;
+const MAX_VISIBLE_STUDENTS_PER_FRAME = 96;
 // Scale note: scene floor units use roughly 10 units per meter. The 7.2m
 // service-to-table buffer combines a high-traffic cafeteria queue bay and main
 // aisle, based on dining-hall guidance that primary traffic aisles need about
@@ -148,12 +150,14 @@ const MINGHU_FLOOR_LAYOUTS = {
               anchor: 'center', offsetX: 0, z: 40, dx: 38, dz: 26 },
             { id: 'f2-right-communal-bank', type: 'long', tableColor: 0x7d8d65, count: 12, cols: 3,
               anchor: 'right', right: 70, z: 2, dx: 42, dz: 30 },
-            { id: 'f2-rear-flex-fill', type: 'square', tableColor: 0xb9856f, count: 12, cols: 6,
-              anchor: 'center', offsetX: -4, z: 184, dx: 36, dz: 26 },
+            { id: 'f2-mid-right-flex-fill', type: 'square', tableColor: 0xb9856f, count: 6, cols: 3,
+              anchor: 'right', right: 70, z: 148, dx: 38, dz: 30 },
+            { id: 'f2-rear-flex-fill', type: 'square', tableColor: 0xb9856f, count: 6, cols: 3,
+              anchor: 'center', offsetX: -80, z: 167, dx: 40, dz: 33 },
         ],
         widthBias: 12,
         depthBias: 8,
-        rearNotchDepth: 0,
+        rearNotchDepth: 28,
         cueNames: [
             'featureFoodCourt coffee island',
             'featureFoodCourt hotpot zone',
@@ -169,10 +173,10 @@ const MINGHU_FLOOR_LAYOUTS = {
               xStartRatio: 0.24, xEndRatio: 0.42, z: 16,
               bayStaggerZ: [0], minWindowGap: 34 },
             { id: 'f3-front-noodle-bay', side: 'front', weight: 4,
-              xStartRatio: 0.50, xEndRatio: 0.64, z: 22,
+              xStartRatio: 0.56, xEndRatio: 0.66, z: 28,
               bayStaggerZ: [0], minWindowGap: 34 },
             { id: 'f3-front-tea-bay', side: 'front', weight: 4,
-              xStartRatio: 0.68, xEndRatio: 0.82, z: 16,
+              xStartRatio: 0.66, xEndRatio: 0.82, z: 16,
               bayStaggerZ: [0], minWindowGap: 34 },
         ],
         windowRows: 2,
@@ -193,17 +197,17 @@ const MINGHU_FLOOR_LAYOUTS = {
         queueBufferDepth: 92,
         tableBlocks: [
             { id: 'f3-wall-booth-run', type: 'booth', tableColor: 0x7a5a40, count: 6, cols: 1,
-              anchor: 'left', left: 84, z: 0, dx: 0, dz: 28 },
-            { id: 'f3-central-dining-cluster', type: 'square', tableColor: 0x9b7d55, count: 16, cols: 4,
-              anchor: 'center', offsetX: 12, z: 28, dx: 34, dz: 28 },
-            { id: 'f3-left-mid-square-infill', type: 'square', tableColor: 0x8f7d67, count: 4, cols: 2,
-              anchor: 'left', left: 128, z: 98, dx: 34, dz: 28 },
-            { id: 'f3-east-mid-square-infill', type: 'square', tableColor: 0x8aa092, count: 6, cols: 3,
-              anchor: 'right', right: 112, z: 82, dx: 34, dz: 28 },
-            { id: 'f3-rear-hotpot-communal', type: 'long', tableColor: 0x835f42, count: 14, cols: 7,
-              anchor: 'center', offsetX: 8, z: 202, dx: 42, dz: 30 },
+              anchor: 'left', left: 58, z: 0, dx: 0, dz: 28 },
+            { id: 'f3-central-dining-cluster', type: 'square', tableColor: 0x9b7d55, count: 18, cols: 3,
+              anchor: 'center', offsetX: -10, z: 20, dx: 44, dz: 26 },
+            { id: 'f3-left-mid-square-infill', type: 'square', tableColor: 0x8f7d67, count: 6, cols: 2,
+              anchor: 'left', left: 126, z: 100, dx: 40, dz: 30 },
+            { id: 'f3-east-mid-square-infill', type: 'square', tableColor: 0x8aa092, count: 8, cols: 2,
+              anchor: 'right', right: 136, z: 64, dx: 42, dz: 32 },
+            { id: 'f3-rear-hotpot-communal', type: 'long', tableColor: 0x835f42, count: 8, cols: 4,
+              anchor: 'center', offsetX: 44, z: 176, dx: 46, dz: 28 },
             { id: 'f3-right-window-booth-run', type: 'booth', tableColor: 0x4e6b70, count: 6, cols: 1,
-              anchor: 'right', right: 96, z: 18, dx: 0, dz: 32 },
+              anchor: 'right', right: 68, z: 0, dx: 0, dz: 32 },
         ],
         widthBias: 0,
         depthBias: 0,
@@ -508,27 +512,12 @@ function furnitureDerivedFootprint(seats, windows, profile) {
     const maxX = centerX + width / 2;
     const minZ = 0;
     const maxZ = depth;
-    const rawNotch = profile.rearNotchDepth ?? 28;
-    const notchDepth = rawNotch === 0 ? 0 : Math.min(
-        Math.max(20, rawNotch),
-        Math.max(20, Math.round(depth * 0.28))
-    );
-    const notchWidth = Math.max(STAIR_CORE_WIDTH + 10, Math.round(width * 0.18));
-    const outline = notchDepth === 0
-        ? [
-            { x: minX, z: minZ },
-            { x: maxX, z: minZ },
-            { x: maxX, z: maxZ },
-            { x: minX, z: maxZ },
-          ]
-        : [
-            { x: minX, z: minZ },
-            { x: maxX, z: minZ },
-            { x: maxX, z: maxZ - notchDepth },
-            { x: minX + notchWidth, z: maxZ - notchDepth },
-            { x: minX + notchWidth, z: maxZ },
-            { x: minX, z: maxZ },
-          ];
+    const outline = [
+        { x: minX, z: minZ },
+        { x: maxX, z: minZ },
+        { x: maxX, z: maxZ },
+        { x: minX, z: maxZ },
+    ];
 
     return {
         source: 'furnitureDerivedFootprint',
@@ -779,6 +768,9 @@ function layoutFloor(floor, floorIndex) {
     const baseY = floorIndex * FLOOR_V;            // 纯竖向堆叠
     const wins = floor.windows || [];
     const rawSeats = floor.seats || [];
+    const rawStudentCount = Number.isFinite(floor.rawStudentCount)
+        ? floor.rawStudentCount
+        : (floor.students || []).length;
     const profile = floorLayoutProfile(floor.floor_id);
     const footprint = furnitureDerivedFootprint(rawSeats, wins, profile);
     const windows = wins.map((win, idx) => ({
@@ -827,6 +819,8 @@ function layoutFloor(floor, floorIndex) {
         windows,
         seats,
         students,
+        rawStudentCount,
+        visibleStudentCount: students.length,
     };
 }
 
@@ -945,6 +939,113 @@ function studentKey(student) {
     return String(student.id);
 }
 
+function studentVisibilityPriority(student) {
+    switch (student?.position) {
+        case 'floor_switching':
+            return 0;
+        case 'being_served':
+            return 1;
+        case 'window_queue':
+            return 2;
+        case 'waiting_queue':
+            return 3;
+        case 'seated':
+            return 4;
+        default:
+            return 5;
+    }
+}
+
+function studentQueueRank(student, fallbackIndex) {
+    const explicitRank = Number(student?.queue_index);
+    if (Number.isFinite(explicitRank)) return explicitRank;
+    const detailRank = Number(student?.position_detail);
+    if (Number.isFinite(detailRank)) return detailRank;
+    return fallbackIndex;
+}
+
+function selectVisibleStudents(students, limit) {
+    const safeLimit = Math.max(0, Math.min(students.length, limit));
+    if (students.length <= safeLimit) return [...students];
+    return students
+        .map((student, index) => ({
+            student,
+            index,
+            priority: studentVisibilityPriority(student),
+            queueRank: studentQueueRank(student, index),
+            idRank: numericId(student.id),
+        }))
+        .sort((a, b) => (
+            a.priority - b.priority
+            || a.queueRank - b.queueRank
+            || a.idRank - b.idRank
+            || a.index - b.index
+        ))
+        .slice(0, safeLimit)
+        .sort((a, b) => a.index - b.index)
+        .map(item => item.student);
+}
+
+function limitStudentsForRendering(floors) {
+    const counts = floors.map(floor => (floor.students || []).length);
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    if (total <= MAX_UNCAPPED_STUDENTS_PER_FRAME) {
+        return floors.map((floor, index) => ({
+            ...floor,
+            rawStudentCount: counts[index],
+            visualStudentLimit: counts[index],
+            students: [...(floor.students || [])],
+        }));
+    }
+
+    const allocations = counts.map((count, index) => {
+        const exact = total > 0 ? (count / total) * MAX_VISIBLE_STUDENTS_PER_FRAME : 0;
+        return {
+            index,
+            count,
+            limit: count > 0 ? Math.max(1, Math.floor(exact)) : 0,
+            remainder: exact - Math.floor(exact),
+        };
+    });
+
+    let assigned = allocations.reduce((sum, item) => sum + Math.min(item.limit, item.count), 0);
+    while (assigned > MAX_VISIBLE_STUDENTS_PER_FRAME) {
+        const candidate = allocations
+            .filter(item => item.limit > 0)
+            .sort((a, b) => b.limit - a.limit || b.count - a.count || a.index - b.index)[0];
+        if (!candidate) break;
+        candidate.limit -= 1;
+        assigned -= 1;
+    }
+
+    while (assigned < MAX_VISIBLE_STUDENTS_PER_FRAME) {
+        const candidates = allocations
+            .filter(item => item.limit < item.count)
+            .sort((a, b) => b.remainder - a.remainder || b.count - a.count || a.index - b.index);
+        if (!candidates.length) break;
+        let changed = false;
+        for (const candidate of candidates) {
+            if (assigned >= MAX_VISIBLE_STUDENTS_PER_FRAME) break;
+            if (candidate.limit >= candidate.count) continue;
+            candidate.limit += 1;
+            assigned += 1;
+            changed = true;
+        }
+        if (!changed) break;
+    }
+
+    return floors.map((floor, index) => {
+        const limit = allocations[index]?.limit ?? 0;
+        const students = floor.students || [];
+        return {
+            ...floor,
+            rawStudentCount: counts[index],
+            visualStudentLimit: limit,
+            students: selectVisibleStudents(students, limit),
+        };
+    });
+}
+
 function attachUnassignedStudents(canteen, floors) {
     const normalized = floors.map(floor => ({
         ...floor,
@@ -986,7 +1087,8 @@ export class StateAdapter {
         if (!picked) return null;
         const { canteen, floors } = picked;
         const seenStudents = new Set();
-        const visibleFloors = attachUnassignedStudents(canteen, floors);
+        const rawFloors = attachUnassignedStudents(canteen, floors);
+        const visibleFloors = limitStudentsForRendering(rawFloors);
         const floorFrames = visibleFloors.map((floor, idx) => {
             const layout = layoutFloor(floor, idx);
             layout.students.forEach(st => {
@@ -1022,7 +1124,7 @@ export class StateAdapter {
             floors: floorFrames,
             sim_time: pickNum(snapshot?.current_time, canteen.current_time),
             students_in_canteen: floorFrames.reduce(
-                (sum, floor) => sum + floor.students.length, 0
+                (sum, floor) => sum + floor.rawStudentCount, 0
             ),
             // KPI 全部来自后端：优先 campus_totals（全局），单食堂顶层字段兜底。
             kpi: deriveKpi(snapshot, canteen),
@@ -1052,6 +1154,9 @@ function deriveKpi(snapshot, canteen) {
 function derivePerFloorKpi(floorFrame) {
     const inQueue = floorFrame.windows.reduce((s, w) => s + (w.queue_length || 0), 0);
     const occupied = floorFrame.seats.filter(s => s.status === 'occupied').length;
+    const students = Number.isFinite(floorFrame.rawStudentCount)
+        ? floorFrame.rawStudentCount
+        : floorFrame.students.length;
     return {
         floor_id: floorFrame.floor_id,
         total_in_queue: inQueue,
@@ -1059,7 +1164,7 @@ function derivePerFloorKpi(floorFrame) {
         empty_seats: floorFrame.seats.length - occupied,
         open_windows: floorFrame.windows.filter(w => w.is_open).length,
         window_count: floorFrame.windows.length,
-        students: floorFrame.students.length,
+        students,
     };
 }
 

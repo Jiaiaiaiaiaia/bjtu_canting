@@ -19,7 +19,7 @@ export class ImmersiveUI {
         this._floorstrip = null; // .twin-floorstrip element
         this._cutaway = false;
         this._heat = false;
-        this._viewPreset = 'overview';
+        this._viewPreset = 'front';
         this._viewPresetButtons = new Map();
         this._sceneApi = null;
     }
@@ -43,6 +43,8 @@ export class ImmersiveUI {
 
         const brand = document.createElement('span');
         brand.className = 'twin-topbar-brand';
+        brand.textContent = '明湖食堂';
+        brand.setAttribute('aria-label', '明湖食堂标识');
         brand.style.display = 'none';
         this._brandEl = brand;
         topbar.appendChild(brand);
@@ -304,7 +306,7 @@ export class ImmersiveUI {
         this._sceneApi = null;
         this._cutaway = false;
         this._heat = false;
-        this._viewPreset = 'overview';
+        this._viewPreset = 'front';
         this._viewPresetButtons.clear();
     }
 
