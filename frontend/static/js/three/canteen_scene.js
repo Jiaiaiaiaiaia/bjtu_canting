@@ -54,6 +54,11 @@ import {
     stableStudentClothingColor, studentStatusColor,
     compactWindowLabel, windowLabelLines,
 } from "./canteen_layouts.js";
+import {
+    meshMat, photoMat, addBox, heatColor,
+    addChairOccupancyMarker, chairVariant, addChair,
+    addSquareTableCluster, addLongTableCluster, addBoothTableCluster,
+} from "./canteen_furniture.js";
 
 const FLOOR_RISE = 0;           // 层间高差（场景已竖向展开，无需额外偏移）
 const CAM_LERP = 0.045;         // 相机/层位移插值系数
@@ -93,16 +98,7 @@ const VIEW_PRESET_SIDE_DISTANCE = 390;
 const VIEW_PRESET_TOP_HEIGHT = 380;
 const VIEW_PRESET_TOP_Z_OFFSET = 18;
 const DEFAULT_OVERVIEW_VIEW_PRESET = 'front';
-// 拥堵热力青→琥珀→红（按队列饱和度 0..1）。
-function heatColor(THREE, t) {
-    const x = Math.max(0, Math.min(1, t));
-    const teal = new THREE.Color(0x2dd4bf);
-    const amber = new THREE.Color(0xe7bd63);
-    const red = new THREE.Color(0xd64a55);
-    return x < 0.5
-        ? teal.clone().lerp(amber, x / 0.5)
-        : amber.clone().lerp(red, (x - 0.5) / 0.5);
-}
+
 
 export class CanteenScene {
     constructor(THREE, scene, camera, controls) {
@@ -230,18 +226,6 @@ export class CanteenScene {
         this._floorGroups.clear();
     }
 
-    _mat(color, opacity, emissive, emissiveIntensity) {
-        return new this.THREE.MeshStandardMaterial({
-            color,
-            roughness: 0.72,
-            metalness: 0.04,
-            transparent: opacity != null,
-            opacity: opacity == null ? 1 : opacity,
-            emissive: emissive != null ? emissive : 0x000000,
-            emissiveIntensity: emissiveIntensity != null ? emissiveIntensity : 0,
-        });
-    }
-
     _label(text, x, y, z, color, opacity, scale = 1, options = {}) {
         const lines = Array.isArray(text) ? text : [String(text || '')];
         const canvas = document.createElement('canvas');
@@ -289,18 +273,6 @@ export class CanteenScene {
         if (options.renderOrder != null) sprite.renderOrder = options.renderOrder;
         if (options.alwaysReadableWindowLabel) sprite.userData.alwaysReadableWindowLabel = true;
         return sprite;
-    }
-
-    _photoMat(color, options = {}) {
-        return new this.THREE.MeshStandardMaterial({
-            color,
-            roughness: options.roughness ?? 0.55,
-            metalness: options.metalness ?? 0.03,
-            transparent: options.opacity != null,
-            opacity: options.opacity ?? 1,
-            emissive: options.emissive ?? 0x000000,
-            emissiveIntensity: options.emissiveIntensity ?? 0,
-        });
     }
 
     _floorSlabOpacity(floor) {
@@ -403,20 +375,6 @@ export class CanteenScene {
                 this._applyFloorGradientMaterial(node.material, floor);
             }
         });
-    }
-
-    _box(group, name, size, pos, mat, userData) {
-        const mesh = new this.THREE.Mesh(
-            new this.THREE.BoxGeometry(size[0], size[1], size[2]),
-            mat
-        );
-        mesh.name = name;
-        mesh.position.set(pos[0], pos[1], pos[2]);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        if (userData) mesh.userData = userData;
-        group.add(mesh);
-        return mesh;
     }
 
     _floorFootprint(floor) {
@@ -526,7 +484,7 @@ export class CanteenScene {
 
     _floorEdgeBands(group, footprint, y, color, userData) {
         const THREE = this.THREE;
-        const material = this._photoMat(color, {
+        const material = photoMat(this.THREE, color, {
             opacity: FLOOR_EDGE_BAND_OPACITY,
             roughness: 0.68,
             metalness: 0.02,
@@ -561,7 +519,7 @@ export class CanteenScene {
         const baseYs = (floors || []).map(floor => floor.baseY || 0);
         const topY = baseYs.length ? Math.max(...baseYs) : 0;
         const fullHeight = topY + floorHeight + 4;
-        const frameMat = this._photoMat(0x3f5358, {
+        const frameMat = photoMat(this.THREE, 0x3f5358, {
             opacity: OPEN_BUILDING_FRAME_OPACITY,
             roughness: 0.62,
             metalness: 0.02,
@@ -578,7 +536,7 @@ export class CanteenScene {
         ];
 
         corners.forEach(([x, z]) => {
-            this._box(
+            addBox(this.THREE,
                 group,
                 'open axonometric building corner column',
                 [4.2, fullHeight, 4.2],
@@ -590,7 +548,7 @@ export class CanteenScene {
 
         (floors || []).forEach(floor => {
             const y = (floor.baseY || 0) + 27.6;
-            this._box(
+            addBox(this.THREE,
                 group,
                 'open axonometric rear floor beam',
                 [buildingFootprint.width + OPEN_BUILDING_DEPTH_PAD * 2, 2.4, 3.0],
@@ -600,7 +558,7 @@ export class CanteenScene {
             );
             [-1, 1].forEach(side => {
                 const x = side < 0 ? minX : maxX;
-                this._box(
+                addBox(this.THREE,
                     group,
                     'open axonometric side depth beam',
                     [3.0, 2.4, buildingFootprint.depth + OPEN_BUILDING_DEPTH_PAD * 2],
@@ -613,12 +571,12 @@ export class CanteenScene {
     }
 
     _addOpenFloorFrame(group, footprint, baseY, floorId) {
-        const frameMat = this._photoMat(0x273845, {
+        const frameMat = photoMat(this.THREE, 0x273845, {
             opacity: OPEN_BUILDING_FRAME_OPACITY,
             roughness: 0.58,
             metalness: 0.02,
         });
-        const shadowMat = this._photoMat(0x07111d, {
+        const shadowMat = photoMat(this.THREE, 0x07111d, {
             opacity: INTERFLOOR_SHADOW_OPACITY,
             roughness: 0.76,
             metalness: 0.0,
@@ -631,7 +589,7 @@ export class CanteenScene {
             footprint.centerX,
             footprint.maxX - 8,
         ].forEach(x => {
-            this._box(
+            addBox(this.THREE,
                 group,
                 'open floor front vertical post',
                 [3.0, 27.5, 3.0],
@@ -641,7 +599,7 @@ export class CanteenScene {
             );
         });
 
-        this._box(
+        addBox(this.THREE,
             group,
             'open floor front edge beam',
             [footprint.width + 5, 2.8, 3.0],
@@ -649,7 +607,7 @@ export class CanteenScene {
             frameMat,
             cueData
         );
-        this._box(
+        addBox(this.THREE,
             group,
             'open floor interlevel shadow band',
             [footprint.width + 4, INTERFLOOR_SHADOW_HEIGHT, 3.2],
@@ -661,12 +619,12 @@ export class CanteenScene {
 
     _addWallDepthCues(group, footprint, baseY, floorId) {
         const wallCueData = { floorId, kind: 'floor' };
-        const columnMat = this._photoMat(0x263541, {
+        const columnMat = photoMat(this.THREE, 0x263541, {
             opacity: 0.74,
             roughness: 0.58,
             metalness: 0.02,
         });
-        const beamMat = this._photoMat(0x4d5d61, {
+        const beamMat = photoMat(this.THREE, 0x4d5d61, {
             opacity: 0.66,
             roughness: 0.62,
             metalness: 0.02,
@@ -678,7 +636,7 @@ export class CanteenScene {
             [footprint.minX, footprint.maxZ],
             [footprint.maxX, footprint.maxZ],
         ].forEach(([x, z]) => {
-            this._box(
+            addBox(this.THREE,
                 group,
                 'building corner column',
                 [3.2, 27.5, 3.2],
@@ -688,7 +646,7 @@ export class CanteenScene {
             );
         });
 
-        this._box(
+        addBox(this.THREE,
             group,
             'wall top cap beam',
             [footprint.width + 2.4, 2.2, 2.8],
@@ -698,7 +656,7 @@ export class CanteenScene {
         );
         [-1, 1].forEach(side => {
             const x = side < 0 ? footprint.minX : footprint.maxX;
-            this._box(
+            addBox(this.THREE,
                 group,
                 'wall top cap beam',
                 [2.8, 2.2, footprint.depth + 2.4],
@@ -707,7 +665,7 @@ export class CanteenScene {
                 wallCueData
             );
         });
-        this._box(
+        addBox(this.THREE,
             group,
             'front cutaway low sill shadow rail',
             [footprint.width, 1.8, 2.2],
@@ -719,12 +677,12 @@ export class CanteenScene {
 
     _addMenuBoard(group, text, pos, width = 34, height = 8, labelOptions = {}) {
         if (!labelOptions.alwaysReadableWindowLabel) {
-            this._box(
+            addBox(this.THREE,
                 group,
                 'muted photo menu board',
                 [width, height, 1],
                 pos,
-                this._photoMat(photoWindowWall.menu, {
+                photoMat(this.THREE, photoWindowWall.menu, {
                     emissive: photoWindowWall.menu,
                     emissiveIntensity: 0.03,
                 })
@@ -749,7 +707,7 @@ export class CanteenScene {
 
     _addCeilingPipes(group, baseY, footprint) {
         const THREE = this.THREE;
-        const pipeMat = this._photoMat(0x6f8790, {
+        const pipeMat = photoMat(this.THREE, 0x6f8790, {
             opacity: 0.38,
             roughness: 0.72,
         });
@@ -787,27 +745,27 @@ export class CanteenScene {
         const x = footprint.minX + 2.1;
         for (let i = 0; i < 6; i += 1) {
             const z = footprint.minZ + 8 + i * Math.min(12, footprint.depth / 20);
-            this._box(group, 'photo window glass pane', [1, 16, 5.3],
+            addBox(this.THREE, group, 'photo window glass pane', [1, 16, 5.3],
                 [x, baseY + 15.5, z],
-                this._photoMat(photoWindowWall.glass, {
+                photoMat(this.THREE, photoWindowWall.glass, {
                     opacity: 0.30,
                     roughness: 0.08,
                     emissive: 0x5fb5c3,
                     emissiveIntensity: 0.04,
                 })
             );
-            this._box(group, 'photo window black frame vertical', [1.4, 18, 0.45],
+            addBox(this.THREE, group, 'photo window black frame vertical', [1.4, 18, 0.45],
                 [x + 0.1, baseY + 15.6, z - 2.95],
-                this._photoMat(photoWindowWall.frame, { roughness: 0.32 })
+                photoMat(this.THREE, photoWindowWall.frame, { roughness: 0.32 })
             );
-            this._box(group, 'photo window black frame vertical', [1.4, 18, 0.45],
+            addBox(this.THREE, group, 'photo window black frame vertical', [1.4, 18, 0.45],
                 [x + 0.1, baseY + 15.6, z + 2.95],
-                this._photoMat(photoWindowWall.frame, { roughness: 0.32 })
+                photoMat(this.THREE, photoWindowWall.frame, { roughness: 0.32 })
             );
         }
-        this._box(group, 'photo window sill bench', [3.2, 2.2, footprint.depth - 10],
+        addBox(this.THREE, group, 'photo window sill bench', [3.2, 2.2, footprint.depth - 10],
             [x + 3.3, baseY + 7, footprint.centerZ],
-            this._photoMat(0xe9ddd0, { roughness: 0.38 })
+            photoMat(this.THREE, 0xe9ddd0, { roughness: 0.38 })
         );
 
         this._addCeilingPipes(group, baseY, footprint);
@@ -830,32 +788,32 @@ export class CanteenScene {
             const entranceX = Math.min(SIDE_ENTRANCE_X, footprint.minX + SIDE_ENTRANCE_X);
             const doorX = entranceX + 9.2;
             // side entrance, clear of front sightline: 门面贴左侧墙，避免挡住俯视聚焦视线。
-            this._box(
+            addBox(this.THREE,
                 group,
                 `${markerName} student spawn entrance marker`,
                 [4.4, 1.0, ENTRANCE_MARKER_DEPTH],
                 [entranceX + 3.0, baseY + 3.5, entrance.z],
-                this._photoMat(PALETTE.flow, {
+                photoMat(this.THREE, PALETTE.flow, {
                     opacity: 0.82,
                     emissive: PALETTE.flow,
                     emissiveIntensity: 0.10,
                 }),
                 { floorId, kind: 'floor' }
             );
-            this._box(
+            addBox(this.THREE,
                 group,
                 `${markerName} entranceDoorFrame`,
                 [1.8, ENTRANCE_DOOR_HEIGHT, ENTRANCE_DOOR_DEPTH],
                 [doorX, baseY + 10.9, entrance.z],
-                this._photoMat(0x17202b, { opacity: 0.78, roughness: 0.26 }),
+                photoMat(this.THREE, 0x17202b, { opacity: 0.78, roughness: 0.26 }),
                 { floorId, kind: 'floor' }
             );
-            this._box(
+            addBox(this.THREE,
                 group,
                 `${markerName} entranceGlassPanel`,
                 [1.0, ENTRANCE_GLASS_HEIGHT, ENTRANCE_GLASS_DEPTH],
                 [doorX - 0.4, baseY + 10.2, entrance.z],
-                this._photoMat(0xcfe9ee, {
+                photoMat(this.THREE, 0xcfe9ee, {
                     opacity: 0.42,
                     roughness: 0.08,
                     emissive: 0x5fb5c3,
@@ -863,12 +821,12 @@ export class CanteenScene {
                 }),
                 { floorId, kind: 'floor' }
             );
-            this._box(
+            addBox(this.THREE,
                 group,
                 `${markerName} entranceCanopy`,
                 [10.5, 2.4, ENTRANCE_CANOPY_DEPTH],
                 [entranceX + 5.0, baseY + 18.2, entrance.z],
-                this._photoMat(0x33404a, {
+                photoMat(this.THREE, 0x33404a, {
                     opacity: 0.88,
                     roughness: 0.30,
                     emissive: 0x20364a,
@@ -890,12 +848,12 @@ export class CanteenScene {
             : floors[0];
         const carY = (activeFloor?.baseY || 0) + 13;
 
-        this._box(
+        addBox(this.THREE,
             group,
             'elevator glass shaft',
             [15, shaftHeight, stairZSpan + 8],
             [shaftX, shaftHeight / 2 - 3, shaftZ],
-            this._photoMat(0x9fe8ef, {
+            photoMat(this.THREE, 0x9fe8ef, {
                 opacity: 0.28,
                 roughness: 0.06,
                 emissive: 0x52d6d1,
@@ -906,23 +864,23 @@ export class CanteenScene {
 
         [-8, 8].forEach(dx => {
             [-10, 10].forEach(dz => {
-                this._box(
+                addBox(this.THREE,
                     group,
                     'elevator dark vertical frame',
                     [1.4, shaftHeight + 1, 1.4],
                     [shaftX + dx, shaftHeight / 2 - 3, shaftZ + dz],
-                    this._photoMat(0x182232, { roughness: 0.34 }),
+                    photoMat(this.THREE, 0x182232, { roughness: 0.34 }),
                     { kind: 'stairCore' }
                 );
             });
         });
 
-        this._box(
+        addBox(this.THREE,
             group,
             'elevator car',
             [10.5, 15, 14],
             [shaftX, carY, shaftZ],
-            this._photoMat(0xe9f8f8, {
+            photoMat(this.THREE, 0xe9f8f8, {
                 opacity: 0.86,
                 roughness: 0.18,
                 emissive: 0x52d6d1,
@@ -934,12 +892,12 @@ export class CanteenScene {
         floors.forEach(floor => {
             const baseY = floor.baseY || 0;
             const zOffset = floorZOffset(floor);
-            this._box(
+            addBox(this.THREE,
                 group,
                 'elevator landing bridge',
                 [24, 1.8, 15],
                 [shaftX + 12, baseY + 5.3, shaftZ + zOffset],
-                this._photoMat(0x33404a, {
+                photoMat(this.THREE, 0x33404a, {
                     opacity: 0.92,
                     roughness: 0.32,
                     emissive: 0x20364a,
@@ -947,12 +905,12 @@ export class CanteenScene {
                 }),
                 { floorId: floor.floor_id, kind: 'floor' }
             );
-            this._box(
+            addBox(this.THREE,
                 group,
                 'elevator floor door',
                 [1.2, 12, 12],
                 [shaftX + 8.4, baseY + 11.5, shaftZ + zOffset],
-                this._photoMat(0xcfe9ee, {
+                photoMat(this.THREE, 0xcfe9ee, {
                     opacity: 0.62,
                     roughness: 0.12,
                     emissive: 0x5fb5c3,
@@ -975,7 +933,7 @@ export class CanteenScene {
             for (let step = 0; step < 8; step += 1) {
                 const t = step / 7;
                 const baseZ = entranceLowerZ + t * stairZSpan;
-                this._box(
+                addBox(this.THREE,
                     group,
                     'stair step stack',
                     [13, 1.0, 4.2],
@@ -984,11 +942,11 @@ export class CanteenScene {
                         lower + 13 + t * (span - 6),
                         baseZ + lowerZOffset + t * (upperZOffset - lowerZOffset),
                     ],
-                    this._photoMat(0xd7e0dc, { roughness: 0.42 }),
+                    photoMat(this.THREE, 0xd7e0dc, { roughness: 0.42 }),
                     { kind: 'stairCore' }
                 );
             }
-            this._box(
+            addBox(this.THREE,
                 group,
                 'stair handrail',
                 [1.2, span - 8, 1.2],
@@ -997,7 +955,7 @@ export class CanteenScene {
                     lower + span / 2 + 8,
                     shaftZ + lowerZOffset + 0.5 * (upperZOffset - lowerZOffset),
                 ],
-            this._photoMat(PALETTE.flow, {
+            photoMat(this.THREE, PALETTE.flow, {
                 opacity: 0.8,
                 roughness: 0.28,
                 emissive: PALETTE.flow,
@@ -1106,7 +1064,7 @@ export class CanteenScene {
     _addWindowInterventionPulse(group, x, y, z, layoutSide, effect) {
         if (!effect) return;
         const THREE = this.THREE;
-        const pulseMat = this._photoMat(WINDOW_INTERVENTION_PULSE_COLOR, {
+        const pulseMat = photoMat(this.THREE, WINDOW_INTERVENTION_PULSE_COLOR, {
             opacity: 0.58,
             roughness: 0.24,
             emissive: WINDOW_INTERVENTION_PULSE_COLOR,
@@ -1131,12 +1089,12 @@ export class CanteenScene {
         };
         group.add(ring);
 
-        const pillar = this._box(
+        const pillar = addBox(this.THREE,
             group,
             'window intervention pulse pillar',
             layoutSide === 'left' ? [2.0, 16, 12] : [14, 16, 2.0],
             [x, y + 4.2, z],
-            this._photoMat(WINDOW_INTERVENTION_PULSE_COLOR, {
+            photoMat(this.THREE, WINDOW_INTERVENTION_PULSE_COLOR, {
                 opacity: 0.18,
                 roughness: 0.34,
                 emissive: WINDOW_INTERVENTION_PULSE_COLOR,
@@ -1221,12 +1179,12 @@ export class CanteenScene {
         }
 
         if (layoutSide === 'left') {
-            const body = this._box(
+            const body = addBox(this.THREE,
                 group,
                 'sideWall service counter window',
                 [12, 8, 18],
                 [x, y - 3.4, z],
-                this._photoMat(win.is_open ? 0xd8e2df : 0x5c6874, {
+                photoMat(this.THREE, win.is_open ? 0xd8e2df : 0x5c6874, {
                     opacity: win.is_open ? 0.95 : 0.74,
                     roughness: 0.34,
                 }),
@@ -1234,13 +1192,13 @@ export class CanteenScene {
             );
             this._tagWindowInterventionBody(body, interventionEffect);
             body.userData.photoCue = 'side counter';
-            this._box(group, 'sideWall glass food guard', [1, 7, 16.5],
+            addBox(this.THREE, group, 'sideWall glass food guard', [1, 7, 16.5],
                 [x + 5.7, y + 2.2, z],
-                this._photoMat(0xcceaf1, { opacity: 0.36, roughness: 0.08 })
+                photoMat(this.THREE, 0xcceaf1, { opacity: 0.36, roughness: 0.08 })
             );
-            this._box(group, 'sideWall red stall menu fascia', [1.2, 6, 18],
+            addBox(this.THREE, group, 'sideWall red stall menu fascia', [1.2, 6, 18],
                 [x - 5.9, y + 8.3, z],
-                this._photoMat(winColor, {
+                photoMat(this.THREE, winColor, {
                     opacity: win.is_open ? 0.98 : 0.64,
                     emissive: winColor,
                     emissiveIntensity: win.is_open ? 0.04 : 0.01,
@@ -1251,10 +1209,10 @@ export class CanteenScene {
             // orientation (service face along +x, stall spans z). Layered on top
             // of the retained side meshes; material/color temperature only.
             const sth = stallTheme(floorId);
-            this._box(group, 'stall base counter',
+            addBox(this.THREE, group, 'stall base counter',
                 [13.2, 1.4, 19.2],
                 [x, y - 7.4, z],
-                this._photoMat(sth.counter, {
+                photoMat(this.THREE, sth.counter, {
                     opacity: win.is_open ? 0.92 : 0.7,
                     roughness: sth.roughness,
                     emissive: sth.counter,
@@ -1264,10 +1222,10 @@ export class CanteenScene {
             // Thin themed glass pushed clear of the retained 'glass food guard'
             // (which sits at x + 5.7); placed further out so the two
             // semi-transparent passes never overlap.
-            this._box(group, 'stall open-kitchen glass',
+            addBox(this.THREE, group, 'stall open-kitchen glass',
                 [0.5, 2.0, 16.0],
                 [x + 6.6, y + 5.6, z],
-                this._photoMat(sth.glass, {
+                photoMat(this.THREE, sth.glass, {
                     opacity: 0.34,
                     roughness: sth.roughness,
                     emissive: sth.glass,
@@ -1276,10 +1234,10 @@ export class CanteenScene {
             );
             // Thin themed status strip stacked above the retained menu fascia
             // (which sits at x - 5.9), same open/serving/closed color logic.
-            this._box(group, 'stall status strip',
+            addBox(this.THREE, group, 'stall status strip',
                 [0.5, 0.5, 22.0],
                 [x - 5.9, y + 11.6, z],
-                this._photoMat(winColor, {
+                photoMat(this.THREE, winColor, {
                     opacity: win.is_open ? 0.5 : 0.32,
                     roughness: sth.roughness,
                     emissive: winColor,
@@ -1290,10 +1248,10 @@ export class CanteenScene {
                 const labelZOffset = localIndex % 2 === 0 ? -5.4 : 5.4;
                 // Thin themed signboard band at label height; the retained side
                 // label renders just in front of it (slightly larger +x).
-                this._box(group, 'stall signboard band',
+                addBox(this.THREE, group, 'stall signboard band',
                     [0.5, 5.4, 19.5],
                     [x + 9.3, y + 16.8 + (localIndex % 3) * 1.3, z],
-                    this._photoMat(sth.sign, {
+                    photoMat(this.THREE, sth.sign, {
                         opacity: win.is_open ? 0.94 : 0.72,
                         roughness: sth.roughness,
                         emissive: sth.sign,
@@ -1321,9 +1279,9 @@ export class CanteenScene {
             const sat = Math.min(1, (win.queue_length || 0) / 12);
             if (win.is_open && sat > 0) {
                 const hc2 = heatColor(this.THREE, sat);
-                this._box(group, 'queue heat cap', [12, 2.4, 18],
+                addBox(this.THREE, group, 'queue heat cap', [12, 2.4, 18],
                     [x, y + 12.6, z],
-                    this._photoMat(hc2.getHex(), {
+                    photoMat(this.THREE, hc2.getHex(), {
                         opacity: 0.66,
                         roughness: 0.70,
                     })
@@ -1336,13 +1294,13 @@ export class CanteenScene {
             return;
         }
 
-        const body = this._box(
+        const body = addBox(this.THREE,
             group,
             'photo service counter window',
             FRONT_WINDOW_COUNTER_SIZE,
             // front service counters are visible but light, not the dark residual under window labels.
             [x, y + 2.7, z],
-            this._photoMat(win.is_open ? 0xd8e2df : 0x5c6874, {
+            photoMat(this.THREE, win.is_open ? 0xd8e2df : 0x5c6874, {
                 opacity: win.is_open ? 0.82 : 0.42,
                 roughness: 0.40,
             }),
@@ -1357,32 +1315,32 @@ export class CanteenScene {
         // window meshes (signboard / open-kitchen glass / base counter / tray
         // rail + status strip). Material + color temperature only, emissive ≈ 0.
         const th = stallTheme(floorId);
-        this._box(group, 'stall base counter',
+        addBox(this.THREE, group, 'stall base counter',
             [FRONT_WINDOW_COUNTER_SIZE[0] + 1.2, 1.4, FRONT_WINDOW_COUNTER_SIZE[2] + 1.0],
             [x, y - 0.1, z],
-            this._photoMat(th.counter, {
+            photoMat(this.THREE, th.counter, {
                 opacity: win.is_open ? 0.92 : 0.7,
                 roughness: th.roughness,
                 emissive: th.counter,
                 emissiveIntensity: win.is_serving ? 0.03 : 0.012,
             })
         );
-        this._box(group, 'stall open-kitchen glass',
+        addBox(this.THREE, group, 'stall open-kitchen glass',
             [FRONT_WINDOW_COUNTER_SIZE[0] - 0.6, 2.0, 0.5],
             // z-separated from the retained semi-transparent 'glass food guard'
             // (centre + 0.20) so the two transparent passes never overlap.
             [x, y + 5.6, z + FRONT_WINDOW_COUNTER_SIZE[2] / 2 + 0.95],
-            this._photoMat(th.glass, {
+            photoMat(this.THREE, th.glass, {
                 opacity: 0.34,
                 roughness: th.roughness,
                 emissive: th.glass,
                 emissiveIntensity: win.is_serving ? 0.03 : 0.012,
             })
         );
-        this._box(group, 'stall tray rail',
+        addBox(this.THREE, group, 'stall tray rail',
             [FRONT_WINDOW_COUNTER_SIZE[0] - 1.0, 0.5, 0.6],
             [x, y + 1.0, z + FRONT_WINDOW_COUNTER_SIZE[2] / 2 + 1.05],
-            this._photoMat(th.rail, {
+            photoMat(this.THREE, th.rail, {
                 opacity: win.is_open ? 0.9 : 0.66,
                 roughness: th.roughness,
                 emissive: th.rail,
@@ -1390,27 +1348,27 @@ export class CanteenScene {
             })
         );
 
-        this._box(group, 'glass food guard', FRONT_WINDOW_GLASS_GUARD_SIZE,
+        addBox(this.THREE, group, 'glass food guard', FRONT_WINDOW_GLASS_GUARD_SIZE,
             [x, y + 5.6, z + FRONT_WINDOW_COUNTER_SIZE[2] / 2 + 0.2],
-            this._photoMat(0xcceaf1, { opacity: 0.36, roughness: 0.08 })
+            photoMat(this.THREE, 0xcceaf1, { opacity: 0.36, roughness: 0.08 })
         );
         const frontStatusRailColor = win.is_open
             ? (win.is_serving ? FRONT_WINDOW_STATUS_RAIL_SERVING_COLOR : FRONT_WINDOW_STATUS_RAIL_IDLE_COLOR)
             : winColor;
-        this._box(group, 'front service status rail', FRONT_WINDOW_STATUS_RAIL_SIZE,
+        addBox(this.THREE, group, 'front service status rail', FRONT_WINDOW_STATUS_RAIL_SIZE,
             // front window status cue should stay thin, not become a dark block under menu labels.
             [x, y + 6.2, z - FRONT_WINDOW_COUNTER_SIZE[2] / 2 - 0.25],
-            this._photoMat(frontStatusRailColor, {
+            photoMat(this.THREE, frontStatusRailColor, {
                 opacity: win.is_open ? 0.62 : 0.36,
                 emissive: frontStatusRailColor,
                 emissiveIntensity: win.is_serving ? 0.035 : 0.015,
             })
         );
         // Additional thin status strip stacked above the retained rail, same open/serving/closed logic.
-        this._box(group, 'stall status strip',
+        addBox(this.THREE, group, 'stall status strip',
             [FRONT_WINDOW_STATUS_RAIL_SIZE[0] + 4, 0.5, 0.5],
             [x, y + 7.0, z - FRONT_WINDOW_COUNTER_SIZE[2] / 2 - 0.55],
-            this._photoMat(frontStatusRailColor, {
+            photoMat(this.THREE, frontStatusRailColor, {
                 opacity: win.is_open ? 0.5 : 0.32,
                 roughness: th.roughness,
                 emissive: frontStatusRailColor,
@@ -1418,9 +1376,9 @@ export class CanteenScene {
             })
         );
         if (win.is_open && win.is_serving) {
-            this._box(group, 'front service serving status light', FRONT_WINDOW_SERVING_LIGHT_SIZE,
+            addBox(this.THREE, group, 'front service serving status light', FRONT_WINDOW_SERVING_LIGHT_SIZE,
                 [x, y + 7.2, z - FRONT_WINDOW_COUNTER_SIZE[2] / 2 - 0.7],
-                this._photoMat(FRONT_WINDOW_SERVING_LIGHT_COLOR, {
+                photoMat(this.THREE, FRONT_WINDOW_SERVING_LIGHT_COLOR, {
                     opacity: 0.78,
                     emissive: FRONT_WINDOW_SERVING_LIGHT_COLOR,
                     emissiveIntensity: 0.08,
@@ -1430,14 +1388,14 @@ export class CanteenScene {
         if (showWindowLabel) {
             // Thin themed signboard band at label height; the retained menu
             // board/label renders just in front of it (slightly larger +z).
-            this._box(group, 'stall signboard band',
+            addBox(this.THREE, group, 'stall signboard band',
                 [FRONT_WINDOW_MENU_BOARD_WIDTH + 1.5, FRONT_WINDOW_MENU_BOARD_HEIGHT + 1.2, 0.5],
                 [
                     x + FRONT_WINDOW_LABEL_X_OFFSET,
                     y + FRONT_WINDOW_LABEL_Y_OFFSET,
                     z + FRONT_WINDOW_LABEL_Z_OFFSET - 0.7,
                 ],
-                this._photoMat(th.sign, {
+                photoMat(this.THREE, th.sign, {
                     opacity: win.is_open ? 0.94 : 0.72,
                     roughness: th.roughness,
                     emissive: th.sign,
@@ -1467,9 +1425,9 @@ export class CanteenScene {
             const frontQueueHeatColor = sat > 0.68
                 ? FRONT_WINDOW_QUEUE_HEAT_BUSY_COLOR
                 : FRONT_WINDOW_QUEUE_HEAT_CLEAR_COLOR;
-            this._box(group, 'front service queue heat strip', FRONT_WINDOW_QUEUE_HEAT_STRIP_SIZE,
+            addBox(this.THREE, group, 'front service queue heat strip', FRONT_WINDOW_QUEUE_HEAT_STRIP_SIZE,
                 [x, y + 5.4, z + FRONT_WINDOW_COUNTER_SIZE[2] / 2 + 0.8],
-                this._photoMat(frontQueueHeatColor, {
+                photoMat(this.THREE, frontQueueHeatColor, {
                     opacity: FRONT_WINDOW_QUEUE_HEAT_STRIP_OPACITY,
                     roughness: 0.70,
                 })
@@ -1479,48 +1437,6 @@ export class CanteenScene {
             group.add(this._label('关闭中', x, y + 18, z, '#e7bd63'));
         }
         this._addWindowInterventionPulse(group, x, y, z, layoutSide, interventionEffect);
-    }
-
-    _chairVariant(side, idx) {
-        if (side === 'bench') return 'bench';
-        if (idx % 6 === 2) return 'round-stool';
-        if (idx % 4 === 1) return 'open-back';
-        return 'standard';
-    }
-
-    _addChair(group, x, y, z, color, side, occupied, idx = 0) {
-        const chairVariant = this._chairVariant(side, idx);
-        const mat = this._photoMat(color, {
-            roughness: 0.48,
-            emissive: occupied ? color : 0x000000,
-            emissiveIntensity: occupied ? 0.04 : 0,
-        });
-        const seatSize = chairVariant === 'round-stool' ? [3.7, 1.7, 3.7] : [4.1, 1.8, 3.9];
-        this._box(group, `mixed photo ${chairVariant} chair seat`, seatSize,
-            [x, y, z], mat);
-        if (chairVariant === 'round-stool') return;
-        const backOffset = 2.55;
-        const isX = side === 'left' || side === 'right';
-        const bx = x + (side === 'left' ? -backOffset : side === 'right' ? backOffset : 0);
-        const bz = z + (side === 'front' ? backOffset : side === 'back' ? -backOffset : 0);
-        const backHeight = chairVariant === 'open-back' ? 4.1 : 5.3;
-        this._box(group, `mixed photo ${chairVariant} chair back`,
-            isX ? [1.1, backHeight, 4.2] : [4.2, backHeight, 1.1],
-            [bx, y + 2.8, bz],
-            mat);
-    }
-
-    _chairOccupancyMarker(group, x, y, z) {
-        const chairOccupancyMarker = new this.THREE.Mesh(
-            new this.THREE.CylinderGeometry(2.2, 2.2, 0.65, 18),
-            this._photoMat(PALETTE.seatOccupied, {
-                emissive: PALETTE.seatOccupied,
-                emissiveIntensity: 0.10,
-            })
-        );
-        chairOccupancyMarker.name = 'chairOccupancyMarker';
-        chairOccupancyMarker.position.set(x - 3.8, y, z + 1.8);
-        group.add(chairOccupancyMarker);
     }
 
     _floorLayoutProfile(floorId) {
@@ -1543,99 +1459,23 @@ export class CanteenScene {
         return block?.tableColor || FLOOR_TABLE_COLOR_FALLBACKS[variant] || FLOOR_TABLE_COLOR_FALLBACKS.square;
     }
 
-    _addSquareTableCluster(group, x, baseY, z, idx, occupied, tableColor) {
-        const woodTableTop = this._box(
-            group,
-            'woodTableTop square four-seat table',
-            [17.5, 1.8, 7.5],
-            [x, baseY + 6.6, z],
-            this._photoMat(tableColor || FLOOR_TABLE_COLOR_FALLBACKS.square, {
-                roughness: 0.32,
-                emissive: occupied ? 0xe7bd63 : 0x000000,
-                emissiveIntensity: occupied ? 0.05 : 0,
-            })
-        );
-        void woodTableTop;
-        if (occupied) this._chairOccupancyMarker(group, x, baseY + 8.05, z);
-        this._box(group, 'dark table pedestal', [2.0, 4.6, 2.0],
-            [x, baseY + 4.0, z],
-            this._photoMat(0x33404a, { roughness: 0.44 })
-        );
-
-        const colors = mixedChairPalette;
-        this._addChair(group, x - CHAIR_DX, baseY + 5.1, z, colors[idx % colors.length], 'left', occupied, idx);
-        this._addChair(group, x + CHAIR_DX, baseY + 5.1, z, colors[(idx + 1) % colors.length], 'right', occupied, idx + 1);
-        this._addChair(group, x, baseY + 5.1, z + CHAIR_DZ, colors[(idx + 2) % colors.length], 'front', occupied, idx + 2);
-        this._addChair(group, x, baseY + 5.1, z - CHAIR_DZ, colors[(idx + 3) % colors.length], 'back', occupied, idx + 3);
-    }
-
-    _addLongTableCluster(group, x, baseY, z, idx, occupied, tableColor) {
-        this._box(group, 'woodTableTop long communal table', [31, 1.8, 8.5],
-            [x, baseY + 6.6, z],
-            this._photoMat(tableColor || FLOOR_TABLE_COLOR_FALLBACKS.long, {
-                roughness: 0.34,
-                emissive: occupied ? 0xe7bd63 : 0x000000,
-                emissiveIntensity: occupied ? 0.05 : 0,
-            })
-        );
-        if (occupied) this._chairOccupancyMarker(group, x, baseY + 8.05, z);
-        [-8, 8].forEach(offset => {
-            this._box(group, 'dark communal table pedestal', [1.8, 4.4, 1.8],
-                [x + offset, baseY + 4.0, z],
-                this._photoMat(0x33404a, { roughness: 0.44 })
-            );
-        });
-
-        const colors = mixedChairPalette;
-        [-12, 0, 12].forEach((offset, chairIdx) => {
-            this._addChair(group, x + offset, baseY + 5.1, z + CHAIR_DZ,
-                colors[(idx + chairIdx) % colors.length], 'front', occupied, idx + chairIdx);
-            this._addChair(group, x + offset, baseY + 5.1, z - CHAIR_DZ,
-                colors[(idx + chairIdx + 2) % colors.length], 'back', occupied, idx + chairIdx + 3);
-        });
-    }
-
-    _addBoothTableCluster(group, x, baseY, z, idx, occupied, tableColor) {
-        this._box(group, 'woodTableTop booth table', [20, 1.6, 6.5],
-            [x, baseY + 6.4, z],
-            this._photoMat(tableColor || FLOOR_TABLE_COLOR_FALLBACKS.booth, {
-                roughness: 0.34,
-                emissive: occupied ? 0xe7bd63 : 0x000000,
-                emissiveIntensity: occupied ? 0.05 : 0,
-            })
-        );
-        if (occupied) this._chairOccupancyMarker(group, x, baseY + 8.05, z);
-        this._box(group, 'booth bench seat', [24, 4.2, 3.2],
-            [x, baseY + 5.2, z + 8.4],
-            this._photoMat(0x6b4f39, { roughness: 0.34 })
-        );
-        this._box(group, 'booth bench seat', [24, 4.2, 3.2],
-            [x, baseY + 5.2, z - 8.4],
-            this._photoMat(0x6b4f39, { roughness: 0.34 })
-        );
-
-        const colors = mixedChairPalette;
-        this._addChair(group, x - CHAIR_DX, baseY + 5.1, z, colors[idx % colors.length], 'left', occupied, idx);
-        this._addChair(group, x + CHAIR_DX, baseY + 5.1, z, colors[(idx + 1) % colors.length], 'right', occupied, idx + 1);
-    }
-
     _addFloorIdentityCues(group, floor, baseY) {
         const profile = this._floorLayoutProfile(floor.floor_id);
         const footprint = this._floorFootprint(floor);
         const serviceMaxZ = serviceWindowMaxZ(profile);
         const tableStartZ = tableZoneStartZ(profile);
         if (profile.key === 'basicMealWideAisle') {
-            this._box(group, 'f1-snake-queue-guide', [footprint.width - 78, 0.9, 22],
+            addBox(this.THREE, group, 'f1-snake-queue-guide', [footprint.width - 78, 0.9, 22],
                 [footprint.centerX, baseY + 3.9, serviceMaxZ + 28],
-                this._photoMat(0x84cc16, { opacity: 0.32, roughness: 0.30 })
+                photoMat(this.THREE, 0x84cc16, { opacity: 0.32, roughness: 0.30 })
             );
-            this._box(group, 'f1-pickup-return-lane', [footprint.width - 86, 0.8, 12],
+            addBox(this.THREE, group, 'f1-pickup-return-lane', [footprint.width - 86, 0.8, 12],
                 [footprint.centerX, baseY + 3.8, tableStartZ - 18],
-                this._photoMat(0xe7bd63, { opacity: 0.34, roughness: 0.28 })
+                photoMat(this.THREE, 0xe7bd63, { opacity: 0.34, roughness: 0.28 })
             );
-            this._box(group, 'f1-main-aisle-cue', [18, 0.8, Math.max(58, footprint.maxZ - tableStartZ - 20)],
+            addBox(this.THREE, group, 'f1-main-aisle-cue', [18, 0.8, Math.max(58, footprint.maxZ - tableStartZ - 20)],
                 [footprint.centerX + 16, baseY + 3.75, tableStartZ + 44],
-                this._photoMat(0x93c5fd, { opacity: 0.28, roughness: 0.30 })
+                photoMat(this.THREE, 0x93c5fd, { opacity: 0.28, roughness: 0.30 })
             );
             this._flatFloorCue(
                 group,
@@ -1656,17 +1496,17 @@ export class CanteenScene {
             return;
         }
         if (profile.key === 'featureFoodCourt') {
-            this._box(group, 'featureFoodCourt coffee island', [22, 5.0, 13],
+            addBox(this.THREE, group, 'featureFoodCourt coffee island', [22, 5.0, 13],
                 [48, baseY + 6.8, serviceMaxZ + 34],
-                this._photoMat(0x4d3a32, {
+                photoMat(this.THREE, 0x4d3a32, {
                     roughness: 0.34,
                     emissive: 0x261a13,
                     emissiveIntensity: 0.06,
                 })
             );
-            this._box(group, 'featureFoodCourt hotpot zone', [78, 0.9, 16],
+            addBox(this.THREE, group, 'featureFoodCourt hotpot zone', [78, 0.9, 16],
                 [236, baseY + 3.8, tableStartZ + 4],
-                this._photoMat(0x7f1d1d, {
+                photoMat(this.THREE, 0x7f1d1d, {
                     opacity: 0.36,
                     emissive: 0x7f1d1d,
                     emissiveIntensity: 0.08,
@@ -1674,13 +1514,13 @@ export class CanteenScene {
             );
             return;
         }
-        this._box(group, 'restaurantDiningRoom booth seating', [96, 5.8, 7.5],
+        addBox(this.THREE, group, 'restaurantDiningRoom booth seating', [96, 5.8, 7.5],
             [87, baseY + 6.8, tableStartZ + 10],
-            this._photoMat(0x6b4f39, { roughness: 0.32 })
+            photoMat(this.THREE, 0x6b4f39, { roughness: 0.32 })
         );
-        this._box(group, 'restaurantDiningRoom service aisle', [18, 0.7, 34],
+        addBox(this.THREE, group, 'restaurantDiningRoom service aisle', [18, 0.7, 34],
             [286, baseY + 3.7, serviceMaxZ + 24],
-            this._photoMat(0xefe9dc, { opacity: 0.32, roughness: 0.28 })
+            photoMat(this.THREE, 0xefe9dc, { opacity: 0.32, roughness: 0.28 })
         );
     }
 
@@ -1702,11 +1542,11 @@ export class CanteenScene {
             const variant = this._tableVariantForProfile(profile, idx);
             const tableColor = this._tableColorForProfile(profile, idx, variant);
             if (variant === 'long') {
-                this._addLongTableCluster(group, x, baseY, z, idx, occupied, tableColor);
+                addLongTableCluster(this.THREE, group, x, baseY, z, idx, occupied, tableColor);
             } else if (variant === 'booth') {
-                this._addBoothTableCluster(group, x, baseY, z, idx, occupied, tableColor);
+                addBoothTableCluster(this.THREE, group, x, baseY, z, idx, occupied, tableColor);
             } else {
-                this._addSquareTableCluster(group, x, baseY, z, idx, occupied, tableColor);
+                addSquareTableCluster(this.THREE, group, x, baseY, z, idx, occupied, tableColor);
             }
 
         }
@@ -1811,7 +1651,7 @@ export class CanteenScene {
         // ---- Site plinth（深青大底座，V7 visual identity）----
         const plinth = new THREE.Mesh(
             new THREE.BoxGeometry(buildingFootprint.width + 28, 6, buildingFootprint.depth + 24),
-            this._mat(0x13243a, undefined, undefined, undefined)
+            meshMat(this.THREE, 0x13243a, undefined, undefined, undefined)
         );
         plinth.position.set(buildingFootprint.centerX, SITE_PLINTH_CENTER_Y, buildingFootprint.centerZ);
         this.group.add(plinth);
@@ -1821,7 +1661,7 @@ export class CanteenScene {
             const entranceX = buildingFootprint.minX + SIDE_ENTRANCE_X;
             const stairCore = new THREE.Mesh(
                 new THREE.BoxGeometry(12, stairHeight, 12),
-                this._mat(0x52d6d1, 0.38, 0x52d6d1, 0.08)
+                meshMat(this.THREE, 0x52d6d1, 0.38, 0x52d6d1, 0.08)
             );
             stairCore.name = `${entrance.stairName} stairCore`;
             stairCore.position.set(entranceX + 9.0, stairHeight / 2 - 3, entrance.z);
@@ -1903,7 +1743,7 @@ export class CanteenScene {
 
             const backWall = new THREE.Mesh(
                 new THREE.BoxGeometry(footprint.width, WALL_H, 2),
-                this._mat(0xbdebf2, FLOOR_BACK_WALL_OPACITY)
+                meshMat(this.THREE, 0xbdebf2, FLOOR_BACK_WALL_OPACITY)
             );
             backWall.position.set(footprint.centerX, wallCY, footprint.minZ + 1);
             this._applyFloorGradientMaterial(backWall.material, floor);
@@ -1911,7 +1751,7 @@ export class CanteenScene {
 
             const leftWall = new THREE.Mesh(
                 new THREE.BoxGeometry(2, WALL_H, footprint.depth),
-                this._mat(0xbdebf2, FLOOR_SIDE_WALL_OPACITY)
+                meshMat(this.THREE, 0xbdebf2, FLOOR_SIDE_WALL_OPACITY)
             );
             leftWall.position.set(footprint.minX, wallCY, fz);
             this._applyFloorGradientMaterial(leftWall.material, floor);
@@ -1919,7 +1759,7 @@ export class CanteenScene {
 
             const rightWall = new THREE.Mesh(
                 new THREE.BoxGeometry(2, WALL_H, footprint.depth),
-                this._mat(0xbdebf2, FLOOR_SIDE_WALL_OPACITY)
+                meshMat(this.THREE, 0xbdebf2, FLOOR_SIDE_WALL_OPACITY)
             );
             rightWall.position.set(footprint.maxX, wallCY, fz);
             this._applyFloorGradientMaterial(rightWall.material, floor);

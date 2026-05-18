@@ -1161,7 +1161,7 @@ def test_canteen_scene_focus_does_not_draw_unexplained_flow_line():
 
 
 def test_canteen_scene_uses_real_minghu_photo_features():
-    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    s = _canteen_scene_contract_source()
     for tok in (
         "photoWindowWall",
         "mixedChairPalette",
