@@ -37,5 +37,5 @@ Also keep `agent.md` and `CLAUDE.md` in sync when changing broad collaboration r
 ## Verification
 
 - Backend regression command:
-  - `PYTHONPATH=backend ./.venv/bin/python -m pytest backend/tests -q`
+  - `./.venv/bin/python -m pytest tests -q`
 - For API/frontend changes, also start the Flask app and manually check the browser flow: config -> start -> step/run -> finish -> statistics/history.

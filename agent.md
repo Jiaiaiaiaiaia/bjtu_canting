@@ -20,10 +20,10 @@
 
 ## 项目结构
 
-- `backend/`：后端源码。
-- `backend/api/`：Flask API、数据库初始化与迁移。
-- `backend/simulation/`：仿真核心，包括单食堂兼容门面、多食堂协调器、学生生命周期、路由、统计。
-- `backend/tests/`：pytest 测试。
+- `src/canteen/`：后端源码（标准 Python 包，`pip install -e .`）。
+- `src/canteen/api/`：Flask API、数据库初始化与迁移。
+- `src/canteen/simulation/`：仿真核心，包括单食堂兼容门面、多食堂协调器、学生生命周期、路由、统计。
+- `tests/`：pytest 测试。
 - `frontend/templates/`：页面模板。
 - `frontend/static/`：CSS 与前端 JavaScript。
 - `database/`：本地 SQLite 运行数据，通常不提交数据库文件。
@@ -65,13 +65,13 @@
 ./.venv/bin/pip install -r requirements.txt
 
 # 启动后端开发服务
-./.venv/bin/python backend/app.py
+./.venv/bin/python -m canteen
 
 # 运行全部后端测试
-PYTHONPATH=backend ./.venv/bin/python -m pytest backend/tests -q
+./.venv/bin/python -m pytest tests -q
 
 # 运行单个测试文件
-PYTHONPATH=backend ./.venv/bin/python -m pytest backend/tests/test_engine.py -q
+./.venv/bin/python -m pytest tests/test_engine.py -q
 
 # 查看当前工作区改动
 git status --short

@@ -8,7 +8,7 @@
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-PYTHONPATH=backend ./.venv/bin/python backend/app.py
+./.venv/bin/python -m canteen
 ```
 
 浏览器访问 http://127.0.0.1:5001/（macOS 默认 5000 端口被 AirPlay 占用）
@@ -24,7 +24,7 @@ PYTHONPATH=backend ./.venv/bin/python backend/app.py
 ## 验证命令
 
 ```bash
-PYTHONPATH=backend ./.venv/bin/python -m pytest backend/tests -q
+./.venv/bin/python -m pytest tests -q
 node --check frontend/static/js/main.js
 node --check frontend/static/js/campus.js
 node --check frontend/static/js/floor_tabs.js
@@ -35,14 +35,17 @@ node --input-type=module --check < frontend/static/js/three/scene3d.js
 
 ```
 Canteen/
-├── backend/                       # 后端（Python + Flask）
-│   ├── app.py                     # Flask 入口
+├── pyproject.toml                 # 打包 + 依赖（pip install -e .）
+├── src/canteen/                   # 后端 Python 包
+│   ├── app.py                     # Flask 工厂（python -m canteen）
+│   ├── paths.py                   # repo-root 路径单一真相源
 │   ├── simulation/                # 仿真引擎模块
 │   │   ├── engine.py              # 单食堂兼容门面
 │   │   ├── coordinator.py         # SimPy 协调器（当前服务单食堂 3D 演示）
 │   │   ├── router.py              # 学生楼层/窗口选择与切换
 │   │   └── presets/               # 食堂预设数据
 │   └── api/                       # 单食堂兼容 API 与 3D 演示 API
+├── tests/                         # pytest 测试
 ├── frontend/                      # 前端（HTML + ECharts + Canvas + Three.js）
 │   ├── templates/index.html
 │   └── static/
