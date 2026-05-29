@@ -53,7 +53,8 @@
 | presets 相邻读取 | `backend/simulation/presets/loader.py:8` `PRESET_DIR = Path(__file__).resolve().parent`；`CANTEEN_FILES = (...json)` | 随包移动透明；标准包需声明 package-data |
 | import 两套且含函数内缩进 import | 绝对：`from simulation.X`、`from api.X`、`import api.routes as routes`（部分在函数体内缩进）；相对：`from .student`、`from .db_migrate` 等 | 绝对 import 全部改写；**相对 import 不变**；检查正则必须能抓缩进 import |
 | 前端引用与 import map 走 url_for | `frontend/templates/index.html` 全用 `url_for('static', ...)`；importmap 同理 | 前端零改 |
-| 测试锚点与 conftest | `backend/tests/conftest.py` 注入 `backend/` 到 sys.path，`ROOT=parents[2]`，`VENDOR=ROOT/'frontend/static/js/three/vendor'`；多个测试 `Path(__file__).resolve().parents[2]` = repo 根 | 测试上移一层后 `parents[2]→parents[1]`；conftest 改为注入 `src/` |
+| 测试 repo-root 锚点（分散在各测试文件，**非 conftest**） | 7 个 `*_contract.py` 用 `REPO_ROOT = Path(__file__).resolve().parents[2]` = repo 根；`test_twin_visual_assets_contract.py:2-3` 用 `ROOT = parents[2]` + `VENDOR = ROOT/'frontend/static/js/three/vendor'` | 测试上移一层后 `parents[2]→parents[1]` |
+| `backend/tests/conftest.py`（仅注入路径，8 行） | 仅 `BACKEND_ROOT = dirname×2(__file__)`（=`backend/`）插入 sys.path 以便 `import simulation/api/app`；**不含** ROOT/VENDOR | 随 repo 根 `conftest.py` 注入 `src/` 而冗余 → 删除该注入逻辑 |
 | 依赖 | `requirements.txt`: `flask>=3.0.0`、`flask-cors>=4.0.0`、`simpy>=4.1.1` | 写入 `pyproject` `[project.dependencies]` |
 | `gen_docs.py` 无代码耦合 | 全仓库无 import 引用；内部 `'simulation/engine.py'` 等仅为报告文字，非文件读取 | 本 Spec 不动它（留根目录） |
 
@@ -117,7 +118,9 @@ DB_PATH       = DATABASE_DIR / "simulation.db"
 | `from simulation.X import …` | `from canteen.simulation.X import …` |
 | `from simulation import SimulationEngine` | `from canteen.simulation import SimulationEngine` |
 | `from api.X import …` | `from canteen.api.X import …` |
+| `from api import …`（包级非点形式，`app.py:11` `from api import api_bp, init_db`） | `from canteen.api import …` |
 | `import api.routes as …`（含函数内缩进） | `import canteen.api.routes as …` |
+| `from app import …`（5 处测试，**均函数内缩进**：`test_api.py:15`、`test_campus_api.py:24`、`test_campus_intervention_api.py:20`、`test_campus_reproducibility_ab.py:102,161`） | `from canteen.app import …` |
 | 包内相对 `from .student import …` 等 | **不变** |
 | 测试 `Path(__file__).resolve().parents[2]`（=repo 根） | `parents[1]` |
 | 测试 `'frontend/static/...'` 字面量 | **不变**（保留 `frontend/`） |
@@ -158,7 +161,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 ```
 
-作用：未 `pip install -e .` 时也能 `import canteen.*`，让 `pytest` 开箱即用。`tests/conftest.py` 保留必要的 `REPO_ROOT`/`VENDOR` 锚点（`parents[1]`），删除原"注入 backend/"逻辑。
+作用：未 `pip install -e .` 时也能 `import canteen.*`，让 `pytest` 开箱即用。pytest 会**无条件先行收集 repo 根 `conftest.py`**（早于、且不受 `[tool.pytest.ini_options] testpaths = ["tests"]` 收集范围限制），故 `src/` 注入对 `tests/` 下所有用例都生效。原 `backend/tests/conftest.py` 的"注入 `backend/`"逻辑随之冗余 → 删除；`REPO_ROOT`/`VENDOR` 等锚点本就在各测试文件内（非 conftest），按 §5.2 改 `parents[2]→parents[1]` 即可。
 
 ### 5.5 运行与测试命令（Phase 2 写入文档）
 
@@ -172,11 +175,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 迁移完成的客观判定（Phase 1 结束时全部满足）：
 
-1. **裸 import 清零**：
+1. **裸 import 清零**（含 `app`）：
    ```bash
-   rg -n "^\s*(from|import)\s+(api|simulation)\b" src tests
+   rg -n "^\s*(from|import)\s+(api|simulation|app)\b" src tests
    ```
-   必须**无输出**。`^\s*` 前缀确保能抓到函数体内缩进的 `import api.routes as routes`。只扫 `src`、`tests`，故 `docs/` 内的示例文本天然排除。对应守门测试用 `re.compile(r"^\s*(from|import)\s+(api|simulation)\b", re.M)` 实现。
+   必须**无输出**。要点：
+   - `^\s*` 前缀确保抓到函数体内缩进的 import——5 处 `from app import create_app` 与 `import api.routes as routes` 都是缩进的。
+   - 模块名必须含 `app`：`app.py` 迁移后这些测试须改成 `from canteen.app import …`，否则过不了本门；旧 `(api|simulation)` 正则会**漏掉** `from app import …`。`app\b` 的词边界不会误伤 `application` 等（`appl` 中 `app` 后无词边界）。
+   - 只扫 `src`、`tests`，故 `docs/` 示例文本天然排除；改写后的 `from canteen.api/simulation/app …` 因前缀是 `canteen` 而不被命中。
+   - 对应守门测试用 `re.compile(r"^\s*(from|import)\s+(api|simulation|app)\b", re.M)` 实现。
 2. **路径中心化生效**：`from canteen.paths import REPO_ROOT, FRONTEND_ROOT, DB_PATH`，且 `REPO_ROOT` 指向仓库根、`FRONTEND_ROOT.is_dir()`、`DATABASE_DIR` 为 repo 根下 `database`。
 3. **preset loader 冒烟**：
    ```bash
