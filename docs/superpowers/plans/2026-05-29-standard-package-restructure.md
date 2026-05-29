@@ -325,6 +325,7 @@ git status
 git diff -- src tests | head -200
 ```
 确认：无 `from canteen.canteen`（二次加前缀）、无被误改的 JS 字符串字面量、`frontend/` 路径字面量未变。
+（注：`tests/conftest.py` 旧 docstring 里的 `simulation/api/app` 会被 Step 2-8 改写，无妨——Step 2-10 会整文件替换它。）
 
 - [ ] **Step 2-13b: editable 安装**
 
@@ -342,12 +343,12 @@ Expected：成功安装 `canteen-0.1.0`，无报错。
 rg -n "^\s*(from|import)\s+(api|simulation|app)\b" src tests || echo "GATE1 OK: no bare imports"
 # 门 3 preset loader 冒烟
 ./.venv/bin/python -c "from canteen.simulation.presets.loader import load_single_canteen_preset; load_single_canteen_preset(); print('GATE3 OK')"
-# 门 5 起服（后台启动→探活→关闭）
-./.venv/bin/python -m canteen & SRV=$!; sleep 3; \
+# 门 5 起服（后台启动→探活→关闭；冷启动首次 import 较慢用 sleep 5；curl 失败可重试或加大 sleep）
+./.venv/bin/python -m canteen & SRV=$!; sleep 5; \
   curl -fs -o /dev/null -w "GATE5 HTTP %{http_code}\n" http://127.0.0.1:5001/ ; kill $SRV
 ```
 Expected：
-- `pytest tests -q` 全 PASS，用例数 ≥ 迁移前基线（迁移前：`PYTHONPATH=backend ./.venv/bin/python -m pytest backend/tests -q`）。
+- `pytest tests -q` 全 PASS，用例数 ≥ 迁移前基线（迁移前 **367**；迁移后 **371**，含 +4 守门测试。基线复核：`PYTHONPATH=backend ./.venv/bin/python -m pytest backend/tests -q`）。
 - `GATE1 OK: no bare imports`
 - `GATE3 OK`
 - `GATE5 HTTP 200`
@@ -395,7 +396,7 @@ git commit -m "refactor(pkg): 迁移 backend/ → src/canteen 标准包（paths 
 
 ```bash
 ./.venv/bin/python -m pytest tests -q
-./.venv/bin/python -m canteen & SRV=$!; sleep 3; curl -fs -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5001/; kill $SRV
+./.venv/bin/python -m canteen & SRV=$!; sleep 5; curl -fs -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5001/; kill $SRV
 ```
 Expected：测试全绿；HTTP 200。
 
