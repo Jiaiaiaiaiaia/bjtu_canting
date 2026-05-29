@@ -109,7 +109,7 @@ DB_PATH       = DATABASE_DIR / "simulation.db"
 - `api/routes.py`：`from canteen.paths import DB_PATH`（替代原 `dirname×3` 计算）；`os.makedirs(os.path.dirname(DB_PATH), ...)` 等用法不变（`DB_PATH` 改为 `Path` 时需确认 `sqlite3.connect(str(DB_PATH))` 与 `os.path.dirname` 兼容——实施时用 `str()` 包裹或改 `DATABASE_DIR`）。
 - `api/campus_routes.py:9`：`import canteen.api.routes as single_routes`（消除裸 import；`_session`/`DB_PATH` 仍走它，**保证单一模块实例**）。
 
-> **实施注意**：`DB_PATH` 由 `str` 变 `Path` 会影响 `os.path.dirname(DB_PATH)` 用法。两种安全做法二选一：(a) 保持 `DB_PATH` 为 `Path` 并把 `os.path.dirname(DB_PATH)` 换成 `DATABASE_DIR` / `DB_PATH.parent`；(b) 在 paths.py 同时导出 `DB_PATH` 的 `str` 形式。计划阶段须明确选定并加测试。
+> **实施注意**：`DB_PATH` 由 `str` 变 `Path` 会影响 `os.path.dirname(DB_PATH)` 用法。两种安全做法二选一：(a) 保持 `DB_PATH` 为 `Path` 并把 `os.path.dirname(DB_PATH)` 换成 `DATABASE_DIR` / `DB_PATH.parent`；(b) 在 paths.py 同时导出 `DB_PATH` 的 `str` 形式。`os.path.dirname(DB_PATH)` 全仓库仅 1 处（`routes.py:37`），故 **推荐 (a)**（最简且足够）；计划阶段定稿并加测试。
 
 ### 5.2 import 改写规则
 
@@ -122,7 +122,7 @@ DB_PATH       = DATABASE_DIR / "simulation.db"
 | `import api.routes as …`（含函数内缩进） | `import canteen.api.routes as …` |
 | `from app import …`（5 处测试，**均函数内缩进**：`test_api.py:15`、`test_campus_api.py:24`、`test_campus_intervention_api.py:20`、`test_campus_reproducibility_ab.py:102,161`） | `from canteen.app import …` |
 | 包内相对 `from .student import …` 等 | **不变** |
-| 测试 `Path(__file__).resolve().parents[2]`（=repo 根） | `parents[1]` |
+| 测试 `Path(__file__).resolve().parents[2]`（=repo 根，**全 9 处 / 8 文件**，含 `test_frontend_three_js_contract.py:2585` 行内用法，非仅顶部 `REPO_ROOT` 常量） | `parents[1]`；用 `rg "parents\[2\]"` 全扫替换 |
 | 测试 `'frontend/static/...'` 字面量 | **不变**（保留 `frontend/`） |
 
 ### 5.3 `pyproject.toml`
@@ -216,11 +216,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 1. `git mv backend/app.py src/canteen/app.py`、`git mv backend/api src/canteen/api`、`git mv backend/simulation src/canteen/simulation`；新增 `src/canteen/__init__.py`、`__main__.py`、`paths.py`。
 2. 新增 `pyproject.toml`、repo 根 `conftest.py`；`requirements.txt` 改 `-e .`。
 3. 改写所有绝对 import（§5.2），含 `campus_routes.py:9`；相对 import 不动。
-4. `git mv backend/tests tests`；改写测试绝对 import；`parents[2]→parents[1]`；改 `tests/conftest.py`。
+4. `git mv backend/tests tests`；改写测试绝对 import；用 `rg "parents\[2\]"` 把 **9 处** `parents[2]→parents[1]`（含 `test_frontend_three_js_contract.py:2585` 行内用法，非仅顶部 `REPO_ROOT` 常量）；删除 `tests/conftest.py` 原"注入 backend/"逻辑。
 5. `app.py`、`api/routes.py` 改用 `canteen.paths`；删 `sys.path.insert`。
 6. `./.venv/bin/pip install -e .`。
 7. 跑齐 §6 全部 6 道门；全绿后 `git add`（显式路径）+ commit。
 8. 删空的 `backend/`（若残留）。
+
+> **注意（worktree）**：`.worktrees/3d-canteen-digital-twin/` 内有一份平行 `backend/` 树（独立 git worktree），**不在本次迁移范围**。`git mv` / `rm backend` 只动主树，勿误碰；§6 守门只扫 `src tests`，不波及它。
 
 ### Phase 2 · 命令同步（绿，提交）
 
