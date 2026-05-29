@@ -55,6 +55,7 @@
 | 前端引用与 import map 走 url_for | `frontend/templates/index.html` 全用 `url_for('static', ...)`；importmap 同理 | 前端零改 |
 | 测试 repo-root 锚点（分散在各测试文件，**非 conftest**） | 7 个 `*_contract.py` 用 `REPO_ROOT = Path(__file__).resolve().parents[2]` = repo 根；`test_twin_visual_assets_contract.py:2-3` 用 `ROOT = parents[2]` + `VENDOR = ROOT/'frontend/static/js/three/vendor'` | 测试上移一层后 `parents[2]→parents[1]` |
 | `backend/tests/conftest.py`（仅注入路径，8 行） | 仅 `BACKEND_ROOT = dirname×2(__file__)`（=`backend/`）插入 sys.path 以便 `import simulation/api/app`；**不含** ROOT/VENDOR | 随 repo 根 `conftest.py` 注入 `src/` 而冗余 → 删除该注入逻辑 |
+| 测试用 monkeypatch 重定向 DB 写入 | 4 文件 `monkeypatch.setattr(routes, "DB_PATH", str(db_path))`（`test_api.py:10`、`test_campus_api.py:14`、`test_campus_intervention_api.py:10`、`test_campus_reproducibility_ab.py:92,152`） | `init_db()` 目录创建须 `str`/`Path` 双兼容（见 §5.1、§6 门 7） |
 | 依赖 | `requirements.txt`: `flask>=3.0.0`、`flask-cors>=4.0.0`、`simpy>=4.1.1` | 写入 `pyproject` `[project.dependencies]` |
 | `gen_docs.py` 无代码耦合 | 全仓库无 import 引用；内部 `'simulation/engine.py'` 等仅为报告文字，非文件读取 | 本 Spec 不动它（留根目录） |
 
@@ -109,7 +110,13 @@ DB_PATH       = DATABASE_DIR / "simulation.db"
 - `api/routes.py`：`from canteen.paths import DB_PATH`（替代原 `dirname×3` 计算）；`os.makedirs(os.path.dirname(DB_PATH), ...)` 等用法不变（`DB_PATH` 改为 `Path` 时需确认 `sqlite3.connect(str(DB_PATH))` 与 `os.path.dirname` 兼容——实施时用 `str()` 包裹或改 `DATABASE_DIR`）。
 - `api/campus_routes.py:9`：`import canteen.api.routes as single_routes`（消除裸 import；`_session`/`DB_PATH` 仍走它，**保证单一模块实例**）。
 
-> **实施注意**：`DB_PATH` 由 `str` 变 `Path` 会影响 `os.path.dirname(DB_PATH)` 用法。两种安全做法二选一：(a) 保持 `DB_PATH` 为 `Path` 并把 `os.path.dirname(DB_PATH)` 换成 `DATABASE_DIR` / `DB_PATH.parent`；(b) 在 paths.py 同时导出 `DB_PATH` 的 `str` 形式。`os.path.dirname(DB_PATH)` 全仓库仅 1 处（`routes.py:37`），故 **推荐 (a)**（最简且足够）；计划阶段定稿并加测试。
+> **实施注意（钉死 — DB_PATH str/Path 兼容）**：4 个测试把 `routes.DB_PATH` monkeypatch 成 **`str`**（`test_api.py:10`、`test_campus_api.py:14`、`test_campus_intervention_api.py:10`、`test_campus_reproducibility_ab.py:92,152` 均 `setattr(routes, "DB_PATH", str(db_path))`）以重定向写入、隔离真实 `database/simulation.db`。`init_db()` 中建库目录的那行因此必须对 `str` 与 `Path` 都成立：
+>
+> - **首选（零改动）**：保持 `os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)` 不变——`os.path.dirname` 接受 path-like，`DB_PATH` 为 `Path`（默认）或 `str`（monkeypatch）都正确。
+> - **等价替代**：`Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)`（`Path(...)` 包裹同样兼容）。
+> - **禁止**：裸 `DB_PATH.parent`（`str` 无 `.parent` → 炸）；固定 `DATABASE_DIR`（忽略 monkeypatch、削弱隔离、可能写真实库）。
+>
+> `paths.py` 的 `DB_PATH` 保持 `Path`；`sqlite3.connect(DB_PATH)`（多处）接受 `str`/`Path`，无需改。无论选首选或替代，由 §6 门 7 守门测试锁定。
 
 ### 5.2 import 改写规则
 
@@ -193,6 +200,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 4. **全套测试绿**：`./.venv/bin/python -m pytest tests -q` 全通过，用例总数不少于迁移前（迁移前基线：`PYTHONPATH=backend pytest backend/tests -q`）。
 5. **起服**：`python -m canteen` 监听 5001 成功。
 6. **浏览器冒烟**：访问 `http://127.0.0.1:5001/`，走 config→start→run→finish→统计/历史，控制台 **0 error**，3D canvas 非空。
+7. **DB_PATH monkeypatch 兼容**：把 `canteen.api.routes.DB_PATH` 分别 monkeypatch 成 `tmp_path/'test.db'`（`Path`）与 `str(tmp_path/'test.db')`（`str`），两种 `init_db()` 都成功；且全程不写真实 `database/simulation.db`。
 
 ---
 
@@ -202,10 +210,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 ### Phase 0 · 守门测试先行（预飞，**不提交**）
 
-- 新增 `tests/test_package_migration_guard.py`（暂写在当前 `backend/tests/`，随 Phase 1 一起移入 `tests/`），覆盖 §6 的门 1/2/3：
+- 新增 `tests/test_package_migration_guard.py`（暂写在当前 `backend/tests/`，随 Phase 1 一起移入 `tests/`），覆盖 §6 的门 1/2/3/7：
   - `test_no_bare_api_simulation_imports`（正则含 `^\s*`，扫 `src`、`tests`）；
   - `test_paths_module_points_to_repo_root`；
-  - `test_preset_loader_importable`。
+  - `test_preset_loader_importable`；
+  - `test_init_db_accepts_str_and_path_db_path`：monkeypatch `canteen.api.routes.DB_PATH` 为 `Path` 与 `str` 两形态，`init_db()` 均成功且不触碰真实 `database/simulation.db`（对应 §6 门 7）。
 - 本地运行，**确认全部 RED**（因 `canteen` 包此刻不存在），记录预期失败。
 - **本阶段不 commit**——避免提交红测试违背"每个 commit 可跑、可回退"。
 
@@ -217,9 +226,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 2. 新增 `pyproject.toml`、repo 根 `conftest.py`；`requirements.txt` 改 `-e .`。
 3. 改写所有绝对 import（§5.2），含 `campus_routes.py:9`；相对 import 不动。
 4. `git mv backend/tests tests`；改写测试绝对 import；用 `rg "parents\[2\]"` 把 **9 处** `parents[2]→parents[1]`（含 `test_frontend_three_js_contract.py:2585` 行内用法，非仅顶部 `REPO_ROOT` 常量）；删除 `tests/conftest.py` 原"注入 backend/"逻辑。
-5. `app.py`、`api/routes.py` 改用 `canteen.paths`；删 `sys.path.insert`。
+5. `app.py`、`api/routes.py` 改用 `canteen.paths`；删 `sys.path.insert`。`init_db()` 建库目录那行保持 `os.path.dirname(DB_PATH)`（已 str/Path 兼容）或换 `Path(DB_PATH).parent.mkdir(...)`，**禁止**裸 `DB_PATH.parent`（见 §5.1）。
 6. `./.venv/bin/pip install -e .`。
-7. 跑齐 §6 全部 6 道门；全绿后 `git add`（显式路径）+ commit。
+7. 跑齐 §6 全部 7 道门；全绿后 `git add`（显式路径）+ commit。
 8. 删空的 `backend/`（若残留）。
 
 > **注意（worktree）**：`.worktrees/3d-canteen-digital-twin/` 内有一份平行 `backend/` 树（独立 git worktree），**不在本次迁移范围**。`git mv` / `rm backend` 只动主树，勿误碰；§6 守门只扫 `src tests`，不波及它。
