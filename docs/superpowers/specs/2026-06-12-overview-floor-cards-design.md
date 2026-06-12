@@ -34,10 +34,12 @@
 ### 3.4 窗口热力块
 - 总览下每个窗口渲染为一个小型热力块(尺寸约 12×2.4×18,位置=窗口位),颜色复用 `heatColor(队列饱和度)`;关闭窗口呈灰色。
 - `userData` 沿用现状完整形状 `{ floorId, kind: 'window', windowId }`(raycaster 钻取靠 `floorId` 触发进层,缺省会导致点击失效),行为与现状一致。
+- **干预动效继承**:现有开/关窗反馈全部挂在 `_addServiceStall` 内部(`_tagWindowInterventionBody` 本体高亮 + `_addWindowInterventionPulse` 脉冲,判定来自 `_activeWindowInterventionEffect(win, floorId)`)。总览跳过摊位后,热力块必须显式接管:块本体过 `_tagWindowInterventionBody`,并在块位调用 `_addWindowInterventionPulse`——开窗/加窗反馈在总览不丢失。
 
 ### 3.5 学生光点
 - 总览:`_studentAvatar` 分支为 `_studentLightDot`——单 mesh 发光点(emissive,直径 ~2.4);沿用现有位置/朝向/插值数据,不改 state_adapter 学生输出。
 - 状态色按 `position` token 精确映射(合同测试按此锁定):`window_queue` / `waiting_queue` / `being_served` → 琥珀(排队压力),`seated` → 青(就餐),其余(含 `floor_switching`、移动/进出场)→ 白。
+- 颜色映射用**新增独立 helper**(`overviewStudentDotColor`,由 canteen_layouts 导出),不改 `studentStatusColor()`——focus avatar 与既有合同测试依赖其现语义。
 - focus:现有 avatar 不动。
 
 ### 3.6 每层 KPI 标牌
