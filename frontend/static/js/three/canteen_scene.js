@@ -30,7 +30,11 @@ import {
     FLOOR_SLAB_COLORS, FLOOR_TILE_COLOR, FLOOR_SLAB_OPACITY,
     OVERVIEW_FLOOR_SLAB_OPACITY, FOCUS_FLOOR_SLAB_OPACITY,
     FLOOR_SLAB_RENDER_ORDER, FLOOR_OUTLINE_OPACITY, FLOOR_TILE_OUTLINE_OPACITY,
-    FLOOR_EDGE_BAND_HEIGHT, FLOOR_EDGE_BAND_THICKNESS, FLOOR_EDGE_BAND_OPACITY,
+    WALL_RENDER_ORDER, FLOOR_SKIRT_RENDER_ORDER, FLOOR_EDGE_BAND_RENDER_ORDER,
+    WINDOW_GLASS_RENDER_ORDER, FLOOR_DECAL_RENDER_ORDER, QUEUE_HEAT_RENDER_ORDER,
+    STAIR_CORE_RENDER_ORDER, DEFAULT_LABEL_RENDER_ORDER,
+    FLOOR_EDGE_BAND_HEIGHT, FLOOR_EDGE_BAND_THICKNESS,
+    FLOOR_EDGE_BAND_OPACITY, FLOOR_EDGE_BAND_Y_EPSILON,
     FLOOR_BACK_WALL_OPACITY, FLOOR_SIDE_WALL_OPACITY,
     OVERVIEW_FLOOR_GRADIENT_Z_OFFSETS, OVERVIEW_FLOOR_GRADIENT_OPACITY,
     FLOOR_WALL_COLOR, FLOOR_EDGE_COLOR, OPEN_BUILDING_FRAME_OPACITY,
@@ -270,7 +274,7 @@ export class CanteenScene {
         const sprite = new this.THREE.Sprite(mat);
         sprite.position.set(x, y, z);
         sprite.scale.set(90 * scale, 22 * scale, 1);
-        if (options.renderOrder != null) sprite.renderOrder = options.renderOrder;
+        sprite.renderOrder = options.renderOrder ?? DEFAULT_LABEL_RENDER_ORDER;
         if (options.alwaysReadableWindowLabel) sprite.userData.alwaysReadableWindowLabel = true;
         return sprite;
     }
@@ -296,14 +300,20 @@ export class CanteenScene {
             toneMapped: false,
         });
         mat.forceSinglePass = true;
-        mat.polygonOffset = true;
-        // Effective negative depth bias: nudge the ultra-translucent overview
-        // slab toward camera so it resolves consistently against near-coplanar
-        // bottom geometry (ground/plinth/interfloor-shadow/footprint outline)
-        // instead of z-fighting it. Fixes overview 1F floor flicker; a zeroed
-        // offset (the previous value) was a no-op and did not separate them.
-        mat.polygonOffsetFactor = -1;
-        mat.polygonOffsetUnits = -1;
+        mat.polygonOffset = opacity < 0.98;
+        if (mat.polygonOffset) {
+            // Effective negative depth bias: nudge the ultra-translucent overview
+            // slab toward camera so it resolves consistently against near-coplanar
+            // bottom geometry (ground/plinth/interfloor-shadow/footprint outline)
+            // instead of z-fighting it.
+            mat.polygonOffsetFactor = -1;
+            mat.polygonOffsetUnits = -1;
+        } else {
+            // Opaque focused slab writes depth normally; biasing it toward the
+            // camera would let it depth-beat decals resting on the floor plane.
+            mat.polygonOffsetFactor = 0;
+            mat.polygonOffsetUnits = 0;
+        }
         return mat;
     }
 
@@ -504,12 +514,13 @@ export class CanteenScene {
             mesh.name = 'furnitureDerivedFootprint floor edge band';
             mesh.position.set(
                 (point.x + next.x) / 2,
-                y - FLOOR_EDGE_BAND_HEIGHT / 2,
+                y - FLOOR_EDGE_BAND_HEIGHT / 2 - FLOOR_EDGE_BAND_Y_EPSILON,
                 (point.z + next.z) / 2
             );
             mesh.rotation.y = -Math.atan2(dz, dx);
             mesh.castShadow = true;
             mesh.receiveShadow = true;
+            mesh.renderOrder = FLOOR_EDGE_BAND_RENDER_ORDER;
             if (userData) mesh.userData = userData;
             group.add(mesh);
         });
@@ -607,14 +618,17 @@ export class CanteenScene {
             frameMat,
             cueData
         );
-        addBox(this.THREE,
+        // z+1.2 让阴影盒整体退出边带体积（边带 z∈[maxZ-1.2, maxZ+1.2]），
+        // 两个半透明盒互相穿插会在每层前缘产生逐像素表面争夺。
+        const shadow = addBox(this.THREE,
             group,
             'open floor interlevel shadow band',
             [footprint.width + 4, INTERFLOOR_SHADOW_HEIGHT, 3.2],
-            [footprint.centerX, baseY - INTERFLOOR_SHADOW_HEIGHT / 2 - 0.4, z],
+            [footprint.centerX, baseY - INTERFLOOR_SHADOW_HEIGHT / 2 - 0.4, z + 1.2],
             shadowMat,
             cueData
         );
+        shadow.renderOrder = FLOOR_SKIRT_RENDER_ORDER;
     }
 
     _addWallDepthCues(group, footprint, baseY, floorId) {
@@ -745,7 +759,7 @@ export class CanteenScene {
         const x = footprint.minX + 2.1;
         for (let i = 0; i < 6; i += 1) {
             const z = footprint.minZ + 8 + i * Math.min(12, footprint.depth / 20);
-            addBox(this.THREE, group, 'photo window glass pane', [1, 16, 5.3],
+            const pane = addBox(this.THREE, group, 'photo window glass pane', [1, 16, 5.3],
                 [x, baseY + 15.5, z],
                 photoMat(this.THREE, photoWindowWall.glass, {
                     opacity: 0.30,
@@ -754,6 +768,7 @@ export class CanteenScene {
                     emissiveIntensity: 0.04,
                 })
             );
+            pane.renderOrder = WINDOW_GLASS_RENDER_ORDER;
             addBox(this.THREE, group, 'photo window black frame vertical', [1.4, 18, 0.45],
                 [x + 0.1, baseY + 15.6, z - 2.95],
                 photoMat(this.THREE, photoWindowWall.frame, { roughness: 0.32 })
@@ -1285,7 +1300,7 @@ export class CanteenScene {
                         opacity: 0.66,
                         roughness: 0.70,
                     })
-                );
+                ).renderOrder = QUEUE_HEAT_RENDER_ORDER;
             }
             if (!win.is_open && win.closing) {
                 group.add(this._label('关闭中', x + 8, y + 18, z, '#e7bd63', 1, 0.70));
@@ -1431,7 +1446,7 @@ export class CanteenScene {
                     opacity: FRONT_WINDOW_QUEUE_HEAT_STRIP_OPACITY,
                     roughness: 0.70,
                 })
-            );
+            ).renderOrder = QUEUE_HEAT_RENDER_ORDER;
         }
         if (!win.is_open && win.closing) {
             group.add(this._label('关闭中', x, y + 18, z, '#e7bd63'));
@@ -1468,15 +1483,15 @@ export class CanteenScene {
             addBox(this.THREE, group, 'f1-snake-queue-guide', [footprint.width - 78, 0.9, 22],
                 [footprint.centerX, baseY + 3.9, serviceMaxZ + 28],
                 photoMat(this.THREE, 0x84cc16, { opacity: 0.32, roughness: 0.30 })
-            );
+            ).renderOrder = FLOOR_DECAL_RENDER_ORDER;
             addBox(this.THREE, group, 'f1-pickup-return-lane', [footprint.width - 86, 0.8, 12],
                 [footprint.centerX, baseY + 3.8, tableStartZ - 18],
                 photoMat(this.THREE, 0xe7bd63, { opacity: 0.34, roughness: 0.28 })
-            );
+            ).renderOrder = FLOOR_DECAL_RENDER_ORDER;
             addBox(this.THREE, group, 'f1-main-aisle-cue', [18, 0.8, Math.max(58, footprint.maxZ - tableStartZ - 20)],
                 [footprint.centerX + 16, baseY + 3.75, tableStartZ + 44],
                 photoMat(this.THREE, 0x93c5fd, { opacity: 0.28, roughness: 0.30 })
-            );
+            ).renderOrder = FLOOR_DECAL_RENDER_ORDER;
             this._flatFloorCue(
                 group,
                 'f1-condiment-station flat floor cue',
@@ -1511,7 +1526,7 @@ export class CanteenScene {
                     emissive: 0x7f1d1d,
                     emissiveIntensity: 0.08,
                 })
-            );
+            ).renderOrder = FLOOR_DECAL_RENDER_ORDER;
             return;
         }
         addBox(this.THREE, group, 'restaurantDiningRoom booth seating', [96, 5.8, 7.5],
@@ -1521,7 +1536,7 @@ export class CanteenScene {
         addBox(this.THREE, group, 'restaurantDiningRoom service aisle', [18, 0.7, 34],
             [286, baseY + 3.7, serviceMaxZ + 24],
             photoMat(this.THREE, 0xefe9dc, { opacity: 0.32, roughness: 0.28 })
-        );
+        ).renderOrder = FLOOR_DECAL_RENDER_ORDER;
     }
 
     _addPhotoTableClusters(group, floor) {
@@ -1655,28 +1670,30 @@ export class CanteenScene {
         );
         plinth.position.set(buildingFootprint.centerX, SITE_PLINTH_CENTER_Y, buildingFootprint.centerZ);
         this.group.add(plinth);
-        // ---- Vertical stair core（贯通底座→楼顶的垂直交通核，比例随真实层高）----
-        const stairHeight = topY + FLOOR_H + 6;
-        this._entranceMarkersForFootprint(buildingFootprint).forEach(entrance => {
-            const entranceX = buildingFootprint.minX + SIDE_ENTRANCE_X;
-            const stairCore = new THREE.Mesh(
-                new THREE.BoxGeometry(12, stairHeight, 12),
-                meshMat(this.THREE, 0x52d6d1, 0.38, 0x52d6d1, 0.08)
-            );
-            stairCore.name = `${entrance.stairName} stairCore`;
-            stairCore.position.set(entranceX + 9.0, stairHeight / 2 - 3, entrance.z);
-            stairCore.userData = { kind: 'stairCore' };
-            this.group.add(stairCore);
-        });
-        this._addElevatorCore(
-            this.group,
-            frame.floors,
-            topY,
-            FLOOR_H,
-            buildingFootprint,
-            floor => this._floorGradientZOffset(floor)
-        );
         if (this.mode === 'overview') {
+            // overview-only vertical transport core: focus mode keeps the selected floor from being cut by the full-building stair/elevator core.
+            // Each floor still renders local entrance markers inside its own group.
+            const stairHeight = topY + FLOOR_H + 6;
+            this._entranceMarkersForFootprint(buildingFootprint).forEach(entrance => {
+                const entranceX = buildingFootprint.minX + SIDE_ENTRANCE_X;
+                const stairCore = new THREE.Mesh(
+                    new THREE.BoxGeometry(12, stairHeight, 12),
+                    meshMat(this.THREE, 0x52d6d1, 0.38, 0x52d6d1, 0.08)
+                );
+                stairCore.name = `${entrance.stairName} stairCore`;
+                stairCore.position.set(entranceX + 9.0, stairHeight / 2 - 3, entrance.z);
+                stairCore.renderOrder = STAIR_CORE_RENDER_ORDER;
+                stairCore.userData = { kind: 'stairCore' };
+                this.group.add(stairCore);
+            });
+            this._addElevatorCore(
+                this.group,
+                frame.floors,
+                topY,
+                FLOOR_H,
+                buildingFootprint,
+                floor => this._floorGradientZOffset(floor)
+            );
             this._addOpenBuildingFrame(this.group, buildingFootprint, frame.floors, FLOOR_H);
             const title = this._label(
                 frame.displayName || '明湖食堂',
@@ -1746,6 +1763,7 @@ export class CanteenScene {
                 meshMat(this.THREE, 0xbdebf2, FLOOR_BACK_WALL_OPACITY)
             );
             backWall.position.set(footprint.centerX, wallCY, footprint.minZ + 1);
+            backWall.renderOrder = WALL_RENDER_ORDER;
             this._applyFloorGradientMaterial(backWall.material, floor);
             fg.add(backWall);
 
@@ -1754,6 +1772,7 @@ export class CanteenScene {
                 meshMat(this.THREE, 0xbdebf2, FLOOR_SIDE_WALL_OPACITY)
             );
             leftWall.position.set(footprint.minX, wallCY, fz);
+            leftWall.renderOrder = WALL_RENDER_ORDER;
             this._applyFloorGradientMaterial(leftWall.material, floor);
             fg.add(leftWall);
 
@@ -1762,6 +1781,7 @@ export class CanteenScene {
                 meshMat(this.THREE, 0xbdebf2, FLOOR_SIDE_WALL_OPACITY)
             );
             rightWall.position.set(footprint.maxX, wallCY, fz);
+            rightWall.renderOrder = WALL_RENDER_ORDER;
             this._applyFloorGradientMaterial(rightWall.material, floor);
             fg.add(rightWall);
 

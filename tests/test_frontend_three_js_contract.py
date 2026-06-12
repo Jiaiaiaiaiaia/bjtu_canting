@@ -173,6 +173,20 @@ def test_stage_ground_is_subtle_reference_not_dominant_floor():
         assert tok in s3, f"stage floor/grid should stay visually subdued: {tok!r}"
 
 
+def test_stage_ground_is_not_coplanar_with_site_plinth_top():
+    s3 = (THREE_DIR / "scene3d.js").read_text(encoding="utf-8")
+    for tok in (
+        "const STAGE_GROUND_Y = -22;",
+        "floor.position.set(STAGE_CENTER_X, STAGE_GROUND_Y, STAGE_CENTER_Z);",
+        "grid.position.set(STAGE_CENTER_X, STAGE_GROUND_Y + 0.2, STAGE_CENTER_Z);",
+    ):
+        assert tok in s3, f"stage ground must clear the plinth box y∈[-10,-4]: {tok!r}"
+    # y=-4 placed the translucent stage plane exactly on the opaque plinth top:
+    # that coplanar pair was the overview floor-flicker root cause.
+    assert "floor.position.set(STAGE_CENTER_X, -4, STAGE_CENTER_Z);" not in s3
+    assert "grid.position.set(STAGE_CENTER_X, -3.8, STAGE_CENTER_Z);" not in s3
+
+
 def test_canteen_floor_shape_is_visible_from_above():
     s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
     for tok in (
@@ -235,6 +249,138 @@ def test_canteen_floor_slab_is_not_coplanar_with_site_plinth():
         "mesh.renderOrder = FLOOR_SLAB_RENDER_ORDER;",
     ):
         assert tok in s, f"floor slab should not z-fight with the site plinth: {tok!r}"
+
+
+def test_floor_slab_polygon_offset_only_biases_translucent_slabs():
+    s = _canteen_scene_contract_source()
+    for tok in (
+        "mat.polygonOffset = opacity < 0.98;",
+        "mat.polygonOffsetFactor = -1;",
+        "mat.polygonOffsetUnits = -1;",
+        "mat.polygonOffsetFactor = 0;",
+        "mat.polygonOffsetUnits = 0;",
+    ):
+        assert tok in s, f"depth bias must stay scoped to translucent overview slabs: {tok!r}"
+    # an unconditional offset also pulled the opaque focused slab toward the
+    # camera, letting it depth-beat decals resting on the floor plane.
+    assert "mat.polygonOffset = true;" not in s
+
+
+def test_floor_edge_bands_sit_below_slab_plane():
+    s = _canteen_scene_contract_source()
+    for tok in (
+        "export const FLOOR_EDGE_BAND_Y_EPSILON = 0.08;",
+        "FLOOR_EDGE_BAND_OPACITY, FLOOR_EDGE_BAND_Y_EPSILON,",
+        "y - FLOOR_EDGE_BAND_HEIGHT / 2 - FLOOR_EDGE_BAND_Y_EPSILON,",
+    ):
+        assert tok in s, f"edge band top must not be coplanar with the slab plane: {tok!r}"
+    assert "y - FLOOR_EDGE_BAND_HEIGHT / 2,\n" not in s
+
+
+def test_translucent_materials_do_not_write_depth():
+    s = (THREE_DIR / "canteen_furniture.js").read_text(encoding="utf-8")
+    # translucent surfaces writing depth occlude whole objects behind them
+    # whenever the per-frame distance sort flips -> orbit-dependent popping.
+    for tok in (
+        "depthWrite: opacity == null || opacity >= 0.98,",
+        "depthWrite: options.opacity == null || options.opacity >= 0.98,",
+    ):
+        assert tok in s, f"translucent furniture materials must not write depth: {tok!r}"
+
+
+def test_interfloor_shadow_band_clears_floor_edge_band():
+    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    # the shadow box used to interpenetrate the floor edge band volume at every
+    # front edge (z overlap [maxZ+0.2, maxZ+1.2]) -> per-pixel surface fighting.
+    assert "[footprint.centerX, baseY - INTERFLOOR_SHADOW_HEIGHT / 2 - 0.4, z + 1.2]," in s, \
+        "interfloor shadow band must sit clear of the edge band volume"
+    assert "[footprint.centerX, baseY - INTERFLOOR_SHADOW_HEIGHT / 2 - 0.4, z]," not in s, \
+        "interfloor shadow band must not share the edge-band z slot"
+
+
+def test_camera_depth_range_resolves_floor_epsilons():
+    s3 = (THREE_DIR / "scene3d.js").read_text(encoding="utf-8")
+    # near=0.1/far=4000 left ~0.1 world units of 24-bit depth resolution at the
+    # overview distance (~350), swallowing every sub-0.1 anti-z-fight epsilon.
+    for tok in (
+        "new THREE.PerspectiveCamera(48, 16 / 9, 2, 2800);",
+        "controls.minDistance = 30;",
+        "controls.maxDistance = 1100;",
+    ):
+        assert tok in s3, f"camera depth range must keep epsilon separations resolvable: {tok!r}"
+    assert "PerspectiveCamera(48, 16 / 9, 0.1, 4000)" not in s3
+
+
+def test_transparent_layers_use_explicit_render_order_ladder():
+    s = _canteen_scene_contract_source()
+    # same-renderOrder transparent plates re-sort by bounding-sphere distance
+    # every frame; explicit per-layer orders keep the blend order deterministic.
+    for tok in (
+        "export const WALL_RENDER_ORDER = -3;",
+        "export const FLOOR_SKIRT_RENDER_ORDER = -3;",
+        "export const FLOOR_EDGE_BAND_RENDER_ORDER = -2;",
+        "export const WINDOW_GLASS_RENDER_ORDER = -1;",
+        "export const FLOOR_DECAL_RENDER_ORDER = 1;",
+        "export const QUEUE_HEAT_RENDER_ORDER = 3;",
+        "export const STAIR_CORE_RENDER_ORDER = 5;",
+        "export const DEFAULT_LABEL_RENDER_ORDER = 30;",
+        "backWall.renderOrder = WALL_RENDER_ORDER;",
+        "leftWall.renderOrder = WALL_RENDER_ORDER;",
+        "rightWall.renderOrder = WALL_RENDER_ORDER;",
+        "shadow.renderOrder = FLOOR_SKIRT_RENDER_ORDER;",
+        "mesh.renderOrder = FLOOR_EDGE_BAND_RENDER_ORDER;",
+        "pane.renderOrder = WINDOW_GLASS_RENDER_ORDER;",
+        ").renderOrder = FLOOR_DECAL_RENDER_ORDER;",
+        ").renderOrder = QUEUE_HEAT_RENDER_ORDER;",
+        "stairCore.renderOrder = STAIR_CORE_RENDER_ORDER;",
+        "sprite.renderOrder = options.renderOrder ?? DEFAULT_LABEL_RENDER_ORDER;",
+    ):
+        assert tok in s, f"transparent layer needs an explicit render order: {tok!r}"
+
+
+def test_canteen_scene_import_bindings_resolve():
+    # node --check only validates syntax; a misspelled named import from
+    # canteen_layouts/canteen_furniture would still crash at browser runtime.
+    script = textwrap.dedent(
+        """
+        import { readFileSync } from 'node:fs';
+
+        const src = readFileSync('./frontend/static/js/three/canteen_scene.js', 'utf8');
+        const layouts = await import('./frontend/static/js/three/canteen_layouts.js');
+        const furniture = await import('./frontend/static/js/three/canteen_furniture.js');
+
+        function importedNames(modulePath) {
+          const re = new RegExp(
+            // [^}] keeps the capture inside one import block; a lazy [\\s\\S]*?
+            // would swallow the previous block and report phantom names.
+            'import\\\\s*\\\\{([^}]*)\\\\}\\\\s*from\\\\s*["\\']' + modulePath + '["\\']'
+          );
+          const m = src.match(re);
+          if (!m) throw new Error('no import block for ' + modulePath);
+          return m[1].split(',').map(s => s.trim()).filter(Boolean);
+        }
+
+        const missing = [];
+        for (const [mod, path] of [
+          [layouts, './canteen_layouts.js'],
+          [furniture, './canteen_furniture.js'],
+        ]) {
+          for (const name of importedNames(path)) {
+            if (!(name in mod)) missing.push(path + ':' + name);
+          }
+        }
+        console.log(JSON.stringify({ missing }));
+        """
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    payload = json.loads(result.stdout)
+    assert payload["missing"] == [], f"unresolved imports: {payload['missing']}"
 
 
 def test_state_adapter_places_students_by_backend_state():
@@ -870,6 +1016,22 @@ def test_canteen_scene_focus_renders_only_selected_floor_group():
         "context-preserving focus",
     ):
         assert tok not in s, f"focus should no longer keep other floors visible: {tok!r}"
+
+
+def test_canteen_scene_focus_does_not_render_full_building_vertical_core():
+    s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
+    rebuild_start = s.index("\n    _rebuild(frame)")
+    floor_loop_start = s.index("frame.floors.forEach", rebuild_start)
+    global_context = s[rebuild_start:floor_loop_start]
+
+    for tok in (
+        "overview-only vertical transport core",
+        "focus mode keeps the selected floor from being cut by the full-building stair/elevator core",
+        "if (this.mode === 'overview') {",
+        "const stairHeight = topY + FLOOR_H + 6;",
+        "this._addElevatorCore(",
+    ):
+        assert tok in global_context, f"global vertical core should be overview-only: {tok!r}"
 
 
 def test_canteen_scene_focus_hides_large_scene_labels_from_sightline():

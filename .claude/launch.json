@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "canteen",
+      "runtimeExecutable": "./.venv/bin/python",
+      "runtimeArgs": ["-m", "canteen"],
+      "port": 5001
+    }
+  ]
+}

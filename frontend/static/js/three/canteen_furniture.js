@@ -18,6 +18,10 @@ export function meshMat(THREE, color, opacity, emissive, emissiveIntensity) {
         metalness: 0.04,
         transparent: opacity != null,
         opacity: opacity == null ? 1 : opacity,
+        // translucent surfaces must not write depth: a depth-writing translucent
+        // box culls whole objects behind it whenever the per-frame distance sort
+        // flips, which reads as orbit-dependent popping/flicker.
+        depthWrite: opacity == null || opacity >= 0.98,
         emissive: emissive != null ? emissive : 0x000000,
         emissiveIntensity: emissiveIntensity != null ? emissiveIntensity : 0,
     });
@@ -30,6 +34,7 @@ export function photoMat(THREE, color, options = {}) {
         metalness: options.metalness ?? 0.03,
         transparent: options.opacity != null,
         opacity: options.opacity ?? 1,
+        depthWrite: options.opacity == null || options.opacity >= 0.98,
         emissive: options.emissive ?? 0x000000,
         emissiveIntensity: options.emissiveIntensity ?? 0,
     });

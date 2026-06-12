@@ -35,11 +35,24 @@ export const FLOOR_SLAB_OPACITY = 0.055;
 export const OVERVIEW_FLOOR_SLAB_OPACITY = 0.07;
 export const FOCUS_FLOOR_SLAB_OPACITY = 1.0;
 export const FLOOR_SLAB_RENDER_ORDER = -4;
+// 透明层显式绘制阶梯：同 renderOrder 的透明物体按包围球距离逐帧重排，
+// 大块近共面板在环绕相机时排序翻转 → 闪烁；显式阶梯让混合顺序确定。
+export const WALL_RENDER_ORDER = -3;
+export const FLOOR_SKIRT_RENDER_ORDER = -3;
+export const FLOOR_EDGE_BAND_RENDER_ORDER = -2;
+export const WINDOW_GLASS_RENDER_ORDER = -1;
+export const FLOOR_DECAL_RENDER_ORDER = 1;
+export const QUEUE_HEAT_RENDER_ORDER = 3;
+export const STAIR_CORE_RENDER_ORDER = 5;
+export const DEFAULT_LABEL_RENDER_ORDER = 30;
 export const FLOOR_OUTLINE_OPACITY = 0.72;
 export const FLOOR_TILE_OUTLINE_OPACITY = 0.42;
 export const FLOOR_EDGE_BAND_HEIGHT = 4.8;
 export const FLOOR_EDGE_BAND_THICKNESS = 2.4;
 export const FLOOR_EDGE_BAND_OPACITY = 0.95;
+// drop band tops slightly below the slab plane: both surfaces are transparent
+// with depthWrite off, so an exactly coplanar pair blends in unstable order.
+export const FLOOR_EDGE_BAND_Y_EPSILON = 0.08;
 export const FLOOR_BACK_WALL_OPACITY = 0.075;
 export const FLOOR_SIDE_WALL_OPACITY = 0.035;
 export const OVERVIEW_FLOOR_GRADIENT_Z_OFFSETS = [48, 12, -24];

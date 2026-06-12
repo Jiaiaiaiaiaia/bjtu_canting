@@ -54,6 +54,10 @@ const STAGE_FLOOR_OPACITY = 0.42;
 const STAGE_GRID_OPACITY = 0.0;
 const STAGE_CENTER_X = 160;
 const STAGE_CENTER_Z = 48;
+// Stage ground must stay below the site plinth box (y∈[-10,-4]): a translucent
+// ground plane coplanar with the opaque plinth top at y=-4 z-fights it and
+// makes the whole overview base flicker while orbiting.
+const STAGE_GROUND_Y = -22;
 
 function init(container) {
     if (!container) return;
@@ -70,7 +74,9 @@ function init(container) {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b1521);
 
-    camera = new THREE.PerspectiveCamera(48, 16 / 9, 0.1, 4000);
+    // near/far 决定 24 位深度缓冲的分辨率：0.1/4000 在总览距离(~350)只剩
+    // ~0.1 世界单位精度，会吞掉场景里所有 <0.1 的防 z-fight 间隙。
+    camera = new THREE.PerspectiveCamera(48, 16 / 9, 2, 2800);
     camera.position.set(160, 246, 360);
 
     try {
@@ -97,6 +103,9 @@ function init(container) {
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.target.set(160, 76, STAGE_CENTER_Z);
+    // 配合 near=2 防止滚轮怼穿几何；far=2800 时拉太远深度精度同样劣化。
+    controls.minDistance = 30;
+    controls.maxDistance = 1100;
 
     const hemi = new THREE.HemisphereLight(0xe6f3ef, 0x22364a, 1.38);
     scene.add(hemi);
@@ -119,7 +128,7 @@ function init(container) {
     );
     floor.name = 'subtle stage floor';
     floor.rotation.x = -Math.PI / 2;
-    floor.position.set(STAGE_CENTER_X, -4, STAGE_CENTER_Z);
+    floor.position.set(STAGE_CENTER_X, STAGE_GROUND_Y, STAGE_CENTER_Z);
     floor.material.depthWrite = false;
     floor.receiveShadow = false;
     floor.castShadow = false;
@@ -132,7 +141,7 @@ function init(container) {
     grid.material.depthWrite = false;
     grid.visible = STAGE_GRID_OPACITY > 0;
     grid.scale.z = STAGE_GRID_DEPTH_SCALE;
-    grid.position.set(STAGE_CENTER_X, -3.8, STAGE_CENTER_Z);
+    grid.position.set(STAGE_CENTER_X, STAGE_GROUND_Y + 0.2, STAGE_CENTER_Z);
     scene.add(grid);
 
     contentGroup = new THREE.Group();
