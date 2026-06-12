@@ -33,14 +33,15 @@
 
 ### 3.4 窗口热力块
 - 总览下每个窗口渲染为一个小型热力块(尺寸约 12×2.4×18,位置=窗口位),颜色复用 `heatColor(队列饱和度)`;关闭窗口呈灰色。
-- 保留 `userData.kind='window'`,raycaster 钻取行为与现状一致。
+- `userData` 沿用现状完整形状 `{ floorId, kind: 'window', windowId }`(raycaster 钻取靠 `floorId` 触发进层,缺省会导致点击失效),行为与现状一致。
 
 ### 3.5 学生光点
-- 总览:`_studentAvatar` 分支为 `_studentLightDot`——单 mesh 发光点(emissive,直径 ~2.4),颜色按状态:`queueing` 琥珀、`seated/dining` 青、其余移动态白;沿用现有位置/朝向/插值数据,不改 state_adapter 学生输出。
+- 总览:`_studentAvatar` 分支为 `_studentLightDot`——单 mesh 发光点(emissive,直径 ~2.4);沿用现有位置/朝向/插值数据,不改 state_adapter 学生输出。
+- 状态色按 `position` token 精确映射(合同测试按此锁定):`window_queue` / `waiting_queue` / `being_served` → 琥珀(排队压力),`seated` → 青(就餐),其余(含 `floor_switching`、移动/进出场)→ 白。
 - focus:现有 avatar 不动。
 
 ### 3.6 每层 KPI 标牌
-- 每层卡片左缘一块 sprite 标牌:`{n}F · 在场 {count} · 排队 {queue}`,数据来自 `frame.floors`(state_adapter 已提供,零后端改动)。
+- 每层卡片左缘一块 sprite 标牌:`{n}F · 在场 {count} · 排队 {queue}`,数据直接取 `frame.perFloorKpi`([state_adapter.js:1131](../../../frontend/static/js/three/state_adapter.js),由 `derivePerFloorKpi` 用 `rawStudentCount` 聚合)——用真实在场数,**不得**从被可视上限裁剪的 `floor.students` 数组重新计数;零后端改动。
 - `userData = { kind: 'floor', floorId }`,点击标牌即进入该层 focus(复用现有 raycaster 楼层钻取)。
 - renderOrder 使用 A 批次 `DEFAULT_LABEL_RENDER_ORDER` 阶梯。
 
@@ -74,6 +75,7 @@
 | FLOOR_V 改动牵连相机取景 | 相机常数(`OVERVIEW_CAMERA_Y_PADDING` 等)列为实施期可调项,以浏览器截图为准 |
 | 总览→focus 过渡动画在新间距下的观感 | 过渡走既有 `_camTarget` 插值,实测确认;不改状态机 |
 | 热力模式与卡片化叠加 | 卡片不透明反而提升热力可读性;合同保留热力 token |
+| 过期注释 | `WALL_H = 90 // 填满楼层间距 (FLOOR_V-~14)` 在 FLOOR_V→132 后失真(墙已 focus 独占,视觉无害),实施时同步更新注释 |
 
 ## 7. 验证计划
 
