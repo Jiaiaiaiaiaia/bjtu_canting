@@ -125,9 +125,12 @@
                 <div class="control-panel">
                     <button id="play-pause-btn">开始</button>
                     <div class="speed-control">
-                        <label for="speed-range">速度</label>
-                        <input type="range" id="speed-range" min="0" max="3" step="1" value="1">
-                        <span id="speed-label">×2</span>
+                        <div class="speed-btn-group" id="speed-btn-group">
+                            <button class="speed-btn" data-speed="0">1×</button>
+                            <button class="speed-btn active" data-speed="1">2×</button>
+                            <button class="speed-btn" data-speed="2">5×</button>
+                            <button class="speed-btn" data-speed="3">10×</button>
+                        </div>
                     </div>
                     <button id="end-btn">结束仿真</button>
                 </div>

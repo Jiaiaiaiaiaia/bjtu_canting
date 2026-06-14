@@ -2,8 +2,8 @@
 
 export const WINDOW_LABEL_MAX_CHARS = 6;
 export const WINDOW_LABEL_LINE_MAX_CHARS = 4;
-export const WINDOW_LABEL_WORLD_WIDTH = 48;
-export const WINDOW_LABEL_WORLD_HEIGHT = 16;
+export const WINDOW_LABEL_WORLD_WIDTH = 72;
+export const WINDOW_LABEL_WORLD_HEIGHT = 24;
 export const WINDOW_LABEL_RENDER_ORDER = 80;
 export const WINDOW_LABEL_DENSITY_STEP = 2;
 export const LABEL_TEXTURE_SCALE = 3;
@@ -12,19 +12,19 @@ export const LABEL_CANVAS_HEIGHT_SINGLE = 72;
 export const LABEL_CANVAS_HEIGHT_MULTI = 96;
 export const WINDOW_INTERVENTION_EFFECT_MS = 1800;
 export const WINDOW_INTERVENTION_PULSE_COLOR = 0x2dd4bf;
-export const FRONT_WINDOW_COUNTER_SIZE = [24, 4.2, 6.2];
-export const FRONT_WINDOW_GLASS_GUARD_SIZE = [24, 2.2, 0.8];
-export const FRONT_WINDOW_STATUS_RAIL_SIZE = [12, 1.1, 0.8];
+export const FRONT_WINDOW_COUNTER_SIZE = [32, 5.2, 7.4];
+export const FRONT_WINDOW_GLASS_GUARD_SIZE = [32, 2.8, 0.8];
+export const FRONT_WINDOW_STATUS_RAIL_SIZE = [16, 1.1, 0.8];
 export const FRONT_WINDOW_STATUS_RAIL_IDLE_COLOR = 0x6f8790;
 export const FRONT_WINDOW_STATUS_RAIL_SERVING_COLOR = 0x5eead4;
 export const FRONT_WINDOW_SERVING_LIGHT_COLOR = 0x5eead4;
-export const FRONT_WINDOW_SERVING_LIGHT_SIZE = [9, 1.4, 1.0];
-export const FRONT_WINDOW_QUEUE_HEAT_STRIP_SIZE = [18, 0.9, 1.1];
+export const FRONT_WINDOW_SERVING_LIGHT_SIZE = [12, 1.4, 1.0];
+export const FRONT_WINDOW_QUEUE_HEAT_STRIP_SIZE = [24, 0.9, 1.1];
 export const FRONT_WINDOW_QUEUE_HEAT_STRIP_OPACITY = 0.50;
 export const FRONT_WINDOW_QUEUE_HEAT_CLEAR_COLOR = 0x2dd4bf;
 export const FRONT_WINDOW_QUEUE_HEAT_BUSY_COLOR = 0x9ed7c5;
-export const FRONT_WINDOW_MENU_BOARD_WIDTH = 42;
-export const FRONT_WINDOW_MENU_BOARD_HEIGHT = 8.8;
+export const FRONT_WINDOW_MENU_BOARD_WIDTH = 48;
+export const FRONT_WINDOW_MENU_BOARD_HEIGHT = 10.5;
 export const FRONT_WINDOW_LABEL_X_OFFSET = 0;
 export const FRONT_WINDOW_LABEL_Y_OFFSET = 20.4;
 export const FRONT_WINDOW_LABEL_Z_OFFSET = -13.2;
@@ -347,6 +347,9 @@ export const MINGHU_FLOOR_LAYOUTS = {
             { id: 'f1-front-service-band-center', side: 'front' },
             { id: 'f1-front-service-band-right', side: 'front' },
         ],
+        uniformFrontWindowSpacing: true,
+        uniformFrontXStartRatio: 0.22,
+        uniformFrontXEndRatio: 0.82,
         tableShiftX: 0,
         tableZ0: 96,
         tableRowStagger: 0,
@@ -388,6 +391,10 @@ export const MINGHU_FLOOR_LAYOUTS = {
             { id: 'f2-front-coffee-bay', side: 'front' },
             { id: 'f2-front-hotfood-bay', side: 'front' },
         ],
+        uniformFrontWindowSpacing: true,
+        uniformFrontSideWindowCount: 1,
+        uniformFrontXStartRatio: 0.22,
+        uniformFrontXEndRatio: 0.84,
         tableShiftX: -5,
         tableZ0: 80,
         tableRowStagger: 10,
@@ -395,20 +402,20 @@ export const MINGHU_FLOOR_LAYOUTS = {
         sideWindowCount: 1,
         sideWindowZ0: 40,
         sideWindowGap: 44,
-        visibleTableCount: 58,
+        visibleTableCount: 64,
         mainAisleWidth: 68,
         queueBufferDepth: 86,
         tableBlocks: [
             { id: 'f2-left-small-table-bank', type: 'square', tableColor: 0xa0a66a, count: 12, cols: 3,
-              anchor: 'left', left: 70, z: 0, dx: 36, dz: 28 },
-            { id: 'f2-foodcourt-center-island', type: 'square', tableColor: 0xc58c4f, count: 22, cols: 5,
+              anchor: 'left', left: 46, z: 0, dx: 36, dz: 28 },
+            { id: 'f2-foodcourt-center-island', type: 'square', tableColor: 0xc58c4f, count: 26, cols: 5,
               anchor: 'center', offsetX: 0, z: 40, dx: 38, dz: 26 },
-            { id: 'f2-right-communal-bank', type: 'long', tableColor: 0x7d8d65, count: 12, cols: 3,
-              anchor: 'right', right: 70, z: 2, dx: 42, dz: 30 },
+            { id: 'f2-right-communal-bank', type: 'long', tableColor: 0x7d8d65, count: 14, cols: 3,
+              anchor: 'right', right: 52, z: 2, dx: 42, dz: 30 },
             { id: 'f2-mid-right-flex-fill', type: 'square', tableColor: 0xb9856f, count: 6, cols: 3,
-              anchor: 'right', right: 70, z: 148, dx: 38, dz: 30 },
+              anchor: 'right', right: 52, z: 128, dx: 38, dz: 30 },
             { id: 'f2-rear-flex-fill', type: 'square', tableColor: 0xb9856f, count: 6, cols: 3,
-              anchor: 'center', offsetX: -80, z: 167, dx: 40, dz: 33 },
+              anchor: 'center', offsetX: -80, z: 149, dx: 40, dz: 33 },
         ],
         tableVariants: ['long', 'square', 'square', 'long', 'square'],
         cueColor: 0xe7bd63,
@@ -421,6 +428,9 @@ export const MINGHU_FLOOR_LAYOUTS = {
             { id: 'f3-front-noodle-bay', side: 'front' },
             { id: 'f3-front-tea-bay', side: 'front' },
         ],
+        uniformFrontWindowSpacing: true,
+        uniformFrontXStartRatio: 0.08,
+        uniformFrontXEndRatio: 0.92,
         tableShiftX: 8,
         tableZ0: 112,
         tableRowStagger: -8,
@@ -428,18 +438,16 @@ export const MINGHU_FLOOR_LAYOUTS = {
         sideWindowCount: 2,
         sideWindowZ0: 28,
         sideWindowGap: 26,
-        visibleTableCount: 52,
+        visibleTableCount: 50,
         mainAisleWidth: 72,
         queueBufferDepth: 92,
         tableBlocks: [
             { id: 'f3-wall-booth-run', type: 'booth', tableColor: 0x7a5a40, count: 6, cols: 1,
               anchor: 'left', left: 58, z: 0, dx: 0, dz: 28 },
-            { id: 'f3-central-dining-cluster', type: 'square', tableColor: 0x9b7d55, count: 18, cols: 3,
-              anchor: 'center', offsetX: -10, z: 20, dx: 44, dz: 26 },
+            { id: 'f3-central-dining-cluster', type: 'square', tableColor: 0x9b7d55, count: 24, cols: 4,
+              anchor: 'center', offsetX: -10, z: 8, dx: 40, dz: 26 },
             { id: 'f3-left-mid-square-infill', type: 'square', tableColor: 0x8f7d67, count: 6, cols: 2,
               anchor: 'left', left: 126, z: 100, dx: 40, dz: 30 },
-            { id: 'f3-east-mid-square-infill', type: 'square', tableColor: 0x8aa092, count: 8, cols: 2,
-              anchor: 'right', right: 136, z: 64, dx: 42, dz: 32 },
             { id: 'f3-rear-hotpot-communal', type: 'long', tableColor: 0x835f42, count: 8, cols: 4,
               anchor: 'center', offsetX: 44, z: 176, dx: 46, dz: 28 },
             { id: 'f3-right-window-booth-run', type: 'booth', tableColor: 0x4e6b70, count: 6, cols: 1,
@@ -451,11 +459,8 @@ export const MINGHU_FLOOR_LAYOUTS = {
 };
 export const MINGHU_WINDOW_LABELS = {
     1: ['小份菜', '麻辣香锅', '美味拌饭', '面食', '自选菜', '自选菜'],
-    2: ['库迪咖啡', '西北刀削面', '炒鸡米饭', '分米鸡', '热卤拌饭', '云南菌菇炒饭',
-        '土豆泥拌饭', '烤鸭', '炙烤五花肉', '煲仔饭', '麻辣香锅', '广东美食', '自选快餐'],
-    3: ['旋转小火锅', '东北麻辣烫', '黄焖鸡', '猪排饭', '手工水饺', '海南鸡饭',
-        '热卤拌饭', '重庆面庄', '小锅焖面', '广式烧腊', '鲍汁捞饭', '茶瀑布',
-        '牛肉粉丝汤', '特色窗口'],
+    2: ['库迪咖啡', '西北刀削面', '热卤拌饭', '烤鸭', '煲仔饭', '麻辣香锅', '广东美食', '自选快餐'],
+    3: ['旋转小火锅', '东北麻辣烫', '黄焖鸡', '手工水饺', '重庆面庄', '广式烧腊', '茶瀑布', '特色窗口'],
 };
 
 export function compactWindowLabel(text) {

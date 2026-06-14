@@ -67,14 +67,15 @@ export function heatColor(THREE, t) {
 
 export function addChairOccupancyMarker(THREE, group, x, y, z) {
     const chairOccupancyMarker = new THREE.Mesh(
-        new THREE.CylinderGeometry(2.2, 2.2, 0.65, 18),
+        new THREE.CylinderGeometry(5.5, 5.5, 0.4, 14),
         photoMat(THREE, PALETTE.seatOccupied, {
             emissive: PALETTE.seatOccupied,
-            emissiveIntensity: 0.10,
+            emissiveIntensity: 0.12,
+            opacity: 0.65,
         })
     );
     chairOccupancyMarker.name = 'chairOccupancyMarker';
-    chairOccupancyMarker.position.set(x - 3.8, y, z + 1.8);
+    chairOccupancyMarker.position.set(x, y, z);
     group.add(chairOccupancyMarker);
 }
 
@@ -85,18 +86,18 @@ export function addChair(THREE, group, x, y, z, color, side, occupied, idx = 0) 
         emissive: occupied ? color : 0x000000,
         emissiveIntensity: occupied ? 0.04 : 0,
     });
-    const seatSize = variant === 'round-stool' ? [3.7, 1.7, 3.7] : [4.1, 1.8, 3.9];
+    const seatSize = variant === 'round-stool' ? [3.4, 1.7, 3.4] : [3.6, 1.8, 3.2];
     addBox(THREE, group, `mixed photo ${variant} chair seat`, seatSize,
         [x, y, z], mat);
     if (variant === 'round-stool') return;
-    const backOffset = 2.55;
+    const backOffset = 2.4;
     const isX = side === 'left' || side === 'right';
     const bx = x + (side === 'left' ? -backOffset : side === 'right' ? backOffset : 0);
     const bz = z + (side === 'front' ? backOffset : side === 'back' ? -backOffset : 0);
-    const backHeight = variant === 'open-back' ? 4.1 : 5.3;
+    const backHeight = variant === 'open-back' ? 3.8 : 5.0;
     addBox(THREE, group, `mixed photo ${variant} chair back`,
-        isX ? [1.1, backHeight, 4.2] : [4.2, backHeight, 1.1],
-        [bx, y + 2.8, bz],
+        isX ? [0.7, backHeight, 3.4] : [3.4, backHeight, 0.7],
+        [bx, y + 3.4, bz],
         mat);
 }
 
@@ -113,7 +114,6 @@ export function addSquareTableCluster(THREE, group, x, baseY, z, idx, occupied, 
         })
     );
     void woodTableTop;
-    if (occupied) addChairOccupancyMarker(THREE, group, x, baseY + 8.05, z);
     addBox(THREE, group, 'dark table pedestal', [2.0, 4.6, 2.0],
         [x, baseY + 4.0, z],
         photoMat(THREE, 0x33404a, { roughness: 0.44 })
@@ -135,7 +135,6 @@ export function addLongTableCluster(THREE, group, x, baseY, z, idx, occupied, ta
             emissiveIntensity: occupied ? 0.05 : 0,
         })
     );
-    if (occupied) addChairOccupancyMarker(THREE, group, x, baseY + 8.05, z);
     [-8, 8].forEach(offset => {
         addBox(THREE, group, 'dark communal table pedestal', [1.8, 4.4, 1.8],
             [x + offset, baseY + 4.0, z],
@@ -161,7 +160,6 @@ export function addBoothTableCluster(THREE, group, x, baseY, z, idx, occupied, t
             emissiveIntensity: occupied ? 0.05 : 0,
         })
     );
-    if (occupied) addChairOccupancyMarker(THREE, group, x, baseY + 8.05, z);
     addBox(THREE, group, 'booth bench seat', [24, 4.2, 3.2],
         [x, baseY + 5.2, z + 8.4],
         photoMat(THREE, 0x6b4f39, { roughness: 0.34 })

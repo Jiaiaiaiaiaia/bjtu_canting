@@ -71,14 +71,14 @@ const FOCUS_TOP_DURATION_MS = 1800;
 const FOCUS_EXPANDED_DURATION_MS = 1800;
 const OVERVIEW_CAMERA_X = 160;
 const OVERVIEW_CAMERA_Z = 360;
-const OVERVIEW_CAMERA_Y_PADDING = 118;
-const OVERVIEW_LOOK_Y_RATIO = 0.54;
-const OVERVIEW_LOOK_Y_OFFSET = 18;
-const OVERVIEW_THREE_QUARTER_X_RATIO = 0.28;
-const OVERVIEW_THREE_QUARTER_MIN_X = 110;
+const OVERVIEW_CAMERA_Y_PADDING = 50;
+const OVERVIEW_LOOK_Y_RATIO = 0.38;
+const OVERVIEW_LOOK_Y_OFFSET = 8;
+const OVERVIEW_THREE_QUARTER_X_RATIO = 0.22;
+const OVERVIEW_THREE_QUARTER_MIN_X = 70;
 const OVERVIEW_THREE_QUARTER_Y_PADDING = 0;
 const OVERVIEW_THREE_QUARTER_Z_PADDING = 0;
-const OVERVIEW_THREE_QUARTER_HEIGHT_RATIO = 0.72;
+const OVERVIEW_THREE_QUARTER_HEIGHT_RATIO = 0.35;
 const OVERVIEW_THREE_QUARTER_DEPTH_RATIO = 0.72;
 const OVERVIEW_LOOK_PANEL_CLEARANCE_X_RATIO = 0.08;
 const FOCUS_CAMERA_X = 160;
@@ -90,18 +90,19 @@ const FOCUS_SIDE_CAMERA_Y_PADDING = 58;
 const FOCUS_TOP_CAMERA_Z = DEFAULT_FOOTPRINT_DEPTH / 2 + 14;
 const FOCUS_TOP_CAMERA_Y_PADDING = 210;
 const FOCUS_EXPANDED_CAMERA_Z = DEFAULT_FOOTPRINT_DEPTH / 2 + 6;
-const FOCUS_EXPANDED_CAMERA_Y_PADDING = 360;
+const FOCUS_EXPANDED_CAMERA_Y_PADDING = 260;
 const FOCUS_TOP_OBLIQUE_Z_PADDING = 72;
-const FOCUS_EXPANDED_OBLIQUE_Z_PADDING = 54;
+const FOCUS_EXPANDED_OBLIQUE_Z_PADDING = 36;
 const FOCUS_SIDE_MIN_DISTANCE = 240;
 const FOCUS_SIDE_Z_OFFSET_RATIO = 0.18;
 const FOCUS_TOP_MIN_HEIGHT = 300;
-const FOCUS_EXPANDED_MIN_HEIGHT = 430;
+const FOCUS_EXPANDED_MIN_HEIGHT = 290;
 const VIEW_PRESET_FRONT_DISTANCE = 360;
 const VIEW_PRESET_SIDE_DISTANCE = 390;
 const VIEW_PRESET_TOP_HEIGHT = 380;
 const VIEW_PRESET_TOP_Z_OFFSET = 18;
-const DEFAULT_OVERVIEW_VIEW_PRESET = 'front';
+const DEFAULT_OVERVIEW_VIEW_PRESET = 'overview';
+const OVERVIEW_DRAWER_Z_OFFSET = 180;
 
 
 export class CanteenScene {
@@ -133,8 +134,8 @@ export class CanteenScene {
 
         // 相机目标（插值逼近，离散切换→平滑飞入）
         const fp = defaultFootprint();
-        this._camTarget = { pos: new THREE.Vector3(OVERVIEW_CAMERA_X, 232, OVERVIEW_CAMERA_Z),
-                            look: new THREE.Vector3(fp.centerX, 76, fp.centerZ) };
+        this._camTarget = { pos: new THREE.Vector3(OVERVIEW_CAMERA_X, 50, 280),
+                            look: new THREE.Vector3(fp.centerX, 50, fp.centerZ) };
         this._lastFrame = null;
     }
 
@@ -207,6 +208,32 @@ export class CanteenScene {
         this._animateFloors();
         this._animateWindowInterventions();
         this._animateCamera();
+        this._tickStudents();
+    }
+
+    // 每帧更新学生 avatar：行走颠簸 + 身体摆动（60fps 平滑）
+    _tickStudents() {
+        const now = this._now();
+        for (const [, fg] of this._floorGroups) {
+            for (let i = fg.children.length - 1; i >= 0; i--) {
+                const child = fg.children[i];
+                if (child.name !== 'studentAvatar') continue;
+                const ud = child.userData;
+                if (!ud || !ud.isAnimating) continue;
+                const offset = ud.walkPhaseOffset || 0;
+                if (ud.isClimbingStairs) {
+                    const phase = now * 0.006 + offset;
+                    child.position.y = (ud.baseY ?? child.position.y) + Math.sin(phase) * 1.4;
+                    child.rotation.x = 0.12 + Math.sin(phase) * 0.03;
+                    child.rotation.z = Math.cos(phase * 0.5) * 0.03;
+                } else {
+                    const phase = now * 0.008 + offset;
+                    child.position.y = (ud.baseY ?? child.position.y) + Math.sin(phase) * 0.9;
+                    child.rotation.x = Math.sin(phase) * 0.04;
+                    child.rotation.z = Math.cos(phase * 0.5) * 0.02;
+                }
+            }
+        }
     }
 
     // ---- 内部：场景构建 ----
@@ -240,12 +267,13 @@ export class CanteenScene {
         ctx.scale(LABEL_TEXTURE_SCALE, LABEL_TEXTURE_SCALE);
         const bgHeight = lines.length > 1 ? 88 : 64;
         if (!options.alwaysReadableWindowLabel) {
+            // window labels should render as stroked text, not dark rectangular blocks.
             ctx.fillStyle = 'rgba(7,17,29,0.76)';
             ctx.roundRect?.(4, 4, 312, bgHeight, 10);
             ctx.fill?.();
         }
         ctx.fillStyle = color || PALETTE.label;
-        ctx.font = `bold ${lines.length > 1 ? 22 : 26}px sans-serif`;
+        ctx.font = `bold ${lines.length > 1 ? 22 : 26}px "PingFang SC", "Microsoft YaHei", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         const lineHeight = lines.length > 1 ? 24 : 26;
@@ -253,7 +281,6 @@ export class CanteenScene {
         lines.forEach((line, idx) => {
             const lineY = centerY + (idx - (lines.length - 1) / 2) * lineHeight;
             if (options.alwaysReadableWindowLabel) {
-                // window labels should render as stroked text, not dark rectangular blocks.
                 ctx.lineWidth = lines.length > 1 ? 4 : 5;
                 ctx.strokeStyle = 'rgba(7,17,29,0.82)';
                 ctx.strokeText(line, 160, lineY);
@@ -268,12 +295,15 @@ export class CanteenScene {
         const mat = new this.THREE.SpriteMaterial({ map: texture, transparent: true });
         if (opacity != null) mat.opacity = opacity;
         if (options.alwaysReadableWindowLabel) {
+            // top-view labels must float above service counters.
             mat.depthTest = false;
             mat.depthWrite = false;
         }
         const sprite = new this.THREE.Sprite(mat);
         sprite.position.set(x, y, z);
-        sprite.scale.set(90 * scale, 22 * scale, 1);
+        const canvasAspect = canvas.width / canvas.height;
+        sprite.scale.set(135 * scale, (135 * scale) / canvasAspect, 1);
+        sprite.userData.canvasAspect = canvasAspect;
         sprite.renderOrder = options.renderOrder ?? DEFAULT_LABEL_RENDER_ORDER;
         if (options.alwaysReadableWindowLabel) sprite.userData.alwaysReadableWindowLabel = true;
         return sprite;
@@ -593,7 +623,7 @@ export class CanteenScene {
             metalness: 0.0,
         });
         const z = footprint.maxZ + 1.8;
-        const cueData = { floorId, kind: 'floor' };
+        const cueData = { floorId, kind: 'buildingFrame' };
 
         [
             footprint.minX + 8,
@@ -632,7 +662,7 @@ export class CanteenScene {
     }
 
     _addWallDepthCues(group, footprint, baseY, floorId) {
-        const wallCueData = { floorId, kind: 'floor' };
+        const wallCueData = { floorId, kind: 'buildingFrame' };
         const columnMat = photoMat(this.THREE, 0x263541, {
             opacity: 0.74,
             roughness: 0.58,
@@ -715,7 +745,8 @@ export class CanteenScene {
         if (!labelOptions.alwaysReadableWindowLabel) {
             label.position.y += Math.max(2.2, height * 0.45);
         }
-        label.scale.set(Math.min(WINDOW_LABEL_WORLD_WIDTH, width * 1.45), WINDOW_LABEL_WORLD_HEIGHT, 1);
+        const labelWidth = Math.min(WINDOW_LABEL_WORLD_WIDTH, width * 1.45);
+        label.scale.set(labelWidth, labelWidth / (label.userData.canvasAspect || 4.44), 1);
         group.add(label);
     }
 
@@ -798,54 +829,56 @@ export class CanteenScene {
     }
 
     _addEntranceMarker(group, floorId, baseY, footprint) {
+        if (floorId !== 1) return;
         this._entranceMarkersForFootprint(footprint).forEach(entrance => {
             const markerName = entrance.name;
-            const entranceX = Math.min(SIDE_ENTRANCE_X, footprint.minX + SIDE_ENTRANCE_X);
-            const doorX = entranceX + 9.2;
-            // side entrance, clear of front sightline: 门面贴左侧墙，避免挡住俯视聚焦视线。
-            addBox(this.THREE,
-                group,
-                `${markerName} student spawn entrance marker`,
-                [4.4, 1.0, ENTRANCE_MARKER_DEPTH],
-                [entranceX + 3.0, baseY + 3.5, entrance.z],
+            const wallX = footprint.minX;
+            const doorCX = wallX - 1;
+            const doorH = 42;
+            const doorW = 22;
+            const doorCY = baseY + doorH / 2;
+            const postW = 3;
+            addBox(this.THREE, group,
+                `${markerName} threshold`,
+                [6, 1.2, doorW + 6],
+                [wallX - 3, baseY + 0.6, entrance.z],
                 photoMat(this.THREE, PALETTE.flow, {
-                    opacity: 0.82,
-                    emissive: PALETTE.flow,
-                    emissiveIntensity: 0.10,
+                    opacity: 0.75,
+                    emissive: PALETTE.flow, emissiveIntensity: 0.10,
                 }),
                 { floorId, kind: 'floor' }
             );
-            addBox(this.THREE,
-                group,
-                `${markerName} entranceDoorFrame`,
-                [1.8, ENTRANCE_DOOR_HEIGHT, ENTRANCE_DOOR_DEPTH],
-                [doorX, baseY + 10.9, entrance.z],
-                photoMat(this.THREE, 0x17202b, { opacity: 0.78, roughness: 0.26 }),
+            addBox(this.THREE, group,
+                `${markerName} doorPostLeft`,
+                [postW, doorH, postW],
+                [doorCX, doorCY, entrance.z - doorW / 2 - postW / 2],
+                photoMat(this.THREE, 0x1a2836, { roughness: 0.28 }),
                 { floorId, kind: 'floor' }
             );
-            addBox(this.THREE,
-                group,
-                `${markerName} entranceGlassPanel`,
-                [1.0, ENTRANCE_GLASS_HEIGHT, ENTRANCE_GLASS_DEPTH],
-                [doorX - 0.4, baseY + 10.2, entrance.z],
-                photoMat(this.THREE, 0xcfe9ee, {
-                    opacity: 0.42,
-                    roughness: 0.08,
-                    emissive: 0x5fb5c3,
-                    emissiveIntensity: 0.06,
-                }),
+            addBox(this.THREE, group,
+                `${markerName} doorPostRight`,
+                [postW, doorH, postW],
+                [doorCX, doorCY, entrance.z + doorW / 2 + postW / 2],
+                photoMat(this.THREE, 0x1a2836, { roughness: 0.28 }),
                 { floorId, kind: 'floor' }
             );
-            addBox(this.THREE,
-                group,
-                `${markerName} entranceCanopy`,
-                [10.5, 2.4, ENTRANCE_CANOPY_DEPTH],
-                [entranceX + 5.0, baseY + 18.2, entrance.z],
-                photoMat(this.THREE, 0x33404a, {
-                    opacity: 0.88,
+            addBox(this.THREE, group,
+                `${markerName} doorLintel`,
+                [postW + 2, 4, doorW + postW * 2],
+                [doorCX, baseY + doorH + 2, entrance.z],
+                photoMat(this.THREE, 0x253848, {
                     roughness: 0.30,
-                    emissive: 0x20364a,
-                    emissiveIntensity: 0.08,
+                    emissive: 0x1c3040, emissiveIntensity: 0.06,
+                }),
+                { floorId, kind: 'floor' }
+            );
+            addBox(this.THREE, group,
+                `${markerName} doorGlass`,
+                [1.2, doorH - 4, doorW],
+                [doorCX, doorCY, entrance.z],
+                photoMat(this.THREE, 0xc8eef4, {
+                    opacity: 0.35, roughness: 0.06,
+                    emissive: 0x5fb5c3, emissiveIntensity: 0.08,
                 }),
                 { floorId, kind: 'floor' }
             );
@@ -980,9 +1013,6 @@ export class CanteenScene {
             );
         }
 
-        const label = this._label('电梯 / 楼梯', shaftX + 4, topY + floorHeight + 18, shaftZ,
-            PALETTE.labelKpi, 0.92, 0.52);
-        group.add(label);
     }
 
     _windowLabel(win, floorId, localIndex) {
@@ -992,10 +1022,7 @@ export class CanteenScene {
     }
 
     _shouldShowWindowLabel(floor, win, localIndex) {
-        if (this.mode !== 'focus' || this.focusFloorId !== floor.floor_id) return false;
-        if ((floor.windows || []).length <= 8) return true;
-        if (win.is_serving || win.closing) return true;
-        return localIndex % WINDOW_LABEL_DENSITY_STEP === 0;
+        return true;
     }
 
     _interventionEventKey(event) {
@@ -1193,6 +1220,27 @@ export class CanteenScene {
             winColor = win.closing ? PALETTE.windowClosing : PALETTE.windowClosedEmpty;
         }
 
+        if (this.mode === 'focus') {
+            const capW = layoutSide === 'left' ? 22 : 22;
+            const capD = layoutSide === 'left' ? 22 : 18;
+            const capX = layoutSide === 'left' ? x + 3 : x;
+            const capZ = layoutSide === 'left' ? z : z - 4;
+            const cap = addBox(this.THREE,
+                group,
+                'topdown stall cap',
+                [capW, 3, capD],
+                [capX, y + 18, capZ],
+                photoMat(this.THREE, winColor, {
+                    opacity: win.is_open ? 0.82 : 0.45,
+                    roughness: 0.28,
+                    emissive: winColor,
+                    emissiveIntensity: win.is_serving ? 0.08 : 0.02,
+                })
+            );
+            cap.castShadow = false;
+            cap.renderOrder = 8;
+        }
+
         if (layoutSide === 'left') {
             const body = addBox(this.THREE,
                 group,
@@ -1265,7 +1313,7 @@ export class CanteenScene {
                 // label renders just in front of it (slightly larger +x).
                 addBox(this.THREE, group, 'stall signboard band',
                     [0.5, 5.4, 19.5],
-                    [x + 9.3, y + 16.8 + (localIndex % 3) * 1.3, z],
+                    [x + 9.3, y + 10.5 + (localIndex % 3) * 1.3, z],
                     photoMat(this.THREE, sth.sign, {
                         opacity: win.is_open ? 0.94 : 0.72,
                         roughness: sth.roughness,
@@ -1276,8 +1324,7 @@ export class CanteenScene {
                 const sideLabel = this._label(
                     windowLabelLines(this._windowLabel(win, floorId, localIndex)),
                     x + 10.0,
-                    // top-view labels must float above service counters.
-                    y + 16.8 + (localIndex % 3) * 1.3,
+                    y + 10.5 + (localIndex % 3) * 1.3,
                     z + labelZOffset,
                     '#fff7df',
                     0.82,
@@ -1287,7 +1334,8 @@ export class CanteenScene {
                         renderOrder: WINDOW_LABEL_RENDER_ORDER + localIndex,
                     }
                 );
-                sideLabel.scale.set(WINDOW_LABEL_WORLD_WIDTH * 0.82, WINDOW_LABEL_WORLD_HEIGHT * 0.90, 1);
+                const sideLabelWidth = WINDOW_LABEL_WORLD_WIDTH * 0.82;
+                sideLabel.scale.set(sideLabelWidth, sideLabelWidth / (sideLabel.userData.canvasAspect || 4.44), 1);
                 group.add(sideLabel);
             }
 
@@ -1422,7 +1470,6 @@ export class CanteenScene {
                 this._windowLabel(win, floorId, localIndex),
                 [
                     x + FRONT_WINDOW_LABEL_X_OFFSET,
-                    // top-view labels must float above service counters.
                     y + FRONT_WINDOW_LABEL_Y_OFFSET,
                     z + FRONT_WINDOW_LABEL_Z_OFFSET,
                 ],
@@ -1529,10 +1576,6 @@ export class CanteenScene {
             ).renderOrder = FLOOR_DECAL_RENDER_ORDER;
             return;
         }
-        addBox(this.THREE, group, 'restaurantDiningRoom booth seating', [96, 5.8, 7.5],
-            [87, baseY + 6.8, tableStartZ + 10],
-            photoMat(this.THREE, 0x6b4f39, { roughness: 0.32 })
-        );
         addBox(this.THREE, group, 'restaurantDiningRoom service aisle', [18, 0.7, 34],
             [286, baseY + 3.7, serviceMaxZ + 24],
             photoMat(this.THREE, 0xefe9dc, { opacity: 0.32, roughness: 0.28 })
@@ -1572,21 +1615,66 @@ export class CanteenScene {
         const p = student.position3d || student.target;
         const avatar = new THREE.Group();
         avatar.name = 'studentAvatar';
-        avatar.position.set(p.x, p.y, p.z + this._floorSwitchGradientDelta(student, floorId));
-        avatar.userData = { floorId, kind: 'student', studentId: student.id };
 
-        // Face the direction of travel: rotate only when there is a real
-        // current→target delta (moving students). Seated/queued avatars have
-        // target≈position (or none) and keep a stable default facing.
+        // 行走检测：当前位置 → 目标位置的水平距离
         const cur = student.position3d;
         const dest = student.target;
+        let dxTravel = 0, dzTravel = 0, walkSpeed2 = 0;
         if (cur && dest) {
-            const dxTravel = dest.x - cur.x;
-            const dzTravel = dest.z - cur.z;
-            if (dxTravel * dxTravel + dzTravel * dzTravel > 1e-3) {
-                avatar.rotation.y = Math.atan2(dxTravel, dzTravel);
-            }
+            dxTravel = dest.x - cur.x;
+            dzTravel = dest.z - cur.z;
+            walkSpeed2 = dxTravel * dxTravel + dzTravel * dzTravel;
         }
+        const isWalking = walkSpeed2 > 0.5
+            && student.position !== 'seated'
+            && student.position !== 'being_served';
+        const isClimbingStairs = student.position === 'floor_switching';
+
+        // 行走/爬楼梯动画：用 performance.now() + studentId 做相位偏移
+        const now = this._now();
+        const idHash = typeof student.id === 'number'
+            ? student.id
+            : [...String(student.id)].reduce((acc, c) => acc * 31 + c.charCodeAt(0), 0);
+        let walkBobY = 0;
+        let walkLean = 0;
+        let walkSway = 0;
+        const isAnimating = isWalking || isClimbingStairs;
+        if (isClimbingStairs) {
+            // 爬楼梯：更慢的步频、更大的颠簸、明显前倾
+            const phase = now * 0.006 + idHash * 2.3;
+            walkBobY = Math.sin(phase) * 1.4;
+            walkLean = 0.12 + Math.sin(phase) * 0.03;
+            walkSway = Math.cos(phase * 0.5) * 0.03;
+        } else if (isWalking) {
+            const phase = now * 0.008 + idHash * 2.3;
+            walkBobY = Math.sin(phase) * 0.9;
+            walkLean = Math.sin(phase) * 0.04;
+            walkSway = Math.cos(phase * 0.5) * 0.02;
+        }
+
+        avatar.position.set(
+            p.x,
+            p.y + walkBobY,
+            p.z + this._floorSwitchGradientDelta(student, floorId)
+        );
+        avatar.userData = {
+            floorId, kind: 'student', studentId: student.id,
+            isAnimating, isClimbingStairs,
+            walkPhaseOffset: idHash * 2.3,
+            targetX: dest?.x, targetY: dest?.y, targetZ: dest?.z,
+            baseY: p.y,
+        };
+
+        if (walkSpeed2 > 1e-3) {
+            avatar.rotation.y = Math.atan2(dxTravel, dzTravel);
+        }
+        // 行走前倾 + 左右微摆
+        avatar.rotation.x = walkLean;
+        avatar.rotation.z = walkSway;
+
+        const isDeparting = student._departingOpacity != null;
+        const matOpacity = isDeparting ? Math.max(0, student._departingOpacity) : 1;
+        const transparent = isDeparting;
 
         const isTracked = this.trackedStudentId != null
             && String(student.id) === this.trackedStudentId;
@@ -1601,6 +1689,9 @@ export class CanteenScene {
                 emissive: isTracked ? PALETTE.flow : clothingColor,
                 emissiveIntensity: isTracked ? 0.14 : 0.03,
                 roughness: 0.45,
+                transparent,
+                opacity: matOpacity,
+                depthWrite: !transparent,
             })
         );
         studentBody.name = 'studentBody';
@@ -1613,6 +1704,9 @@ export class CanteenScene {
             new THREE.MeshStandardMaterial({
                 color: 0xffd6a5,
                 roughness: 0.52,
+                transparent,
+                opacity: matOpacity,
+                depthWrite: !transparent,
             })
         );
         studentHead.name = 'studentHead';
@@ -1627,12 +1721,29 @@ export class CanteenScene {
                 emissive: statusColor,
                 emissiveIntensity: 0.08,
                 roughness: 0.38,
+                transparent,
+                opacity: matOpacity,
+                depthWrite: !transparent,
             })
         );
         studentStatusRing.name = 'studentStatusRing';
         studentStatusRing.rotation.x = Math.PI / 2;
         studentStatusRing.position.y = 0.35;
         avatar.add(studentStatusRing);
+
+        const groundDisc = new THREE.Mesh(
+            new THREE.CircleGeometry(5, 12),
+            new THREE.MeshBasicMaterial({
+                color: statusColor,
+                transparent: true,
+                opacity: 0.42,
+                depthWrite: false,
+            })
+        );
+        groundDisc.name = 'studentGroundDisc';
+        groundDisc.rotation.x = -Math.PI / 2;
+        groundDisc.position.y = 0.2;
+        avatar.add(groundDisc);
 
         if (isTracked) {
             const ring = new THREE.Mesh(
@@ -1641,6 +1752,9 @@ export class CanteenScene {
                     color: PALETTE.flow,
                     emissive: PALETTE.flow,
                     emissiveIntensity: 0.14,
+                    transparent,
+                    opacity: matOpacity,
+                    depthWrite: !transparent,
                 })
             );
             ring.name = 'tracked student halo';
@@ -1695,17 +1809,6 @@ export class CanteenScene {
                 floor => this._floorGradientZOffset(floor)
             );
             this._addOpenBuildingFrame(this.group, buildingFootprint, frame.floors, FLOOR_H);
-            const title = this._label(
-                frame.displayName || '明湖食堂',
-                buildingFootprint.centerX,
-                topY + FLOOR_H + 30,
-                buildingFootprint.centerZ,
-                PALETTE.labelKpi,
-                0.92,
-                1.0
-            );
-            title.name = 'overview-only canteen title';
-            this.group.add(title);
         }
 
         frame.floors.forEach(floor => {
@@ -1762,6 +1865,7 @@ export class CanteenScene {
                 new THREE.BoxGeometry(footprint.width, WALL_H, 2),
                 meshMat(this.THREE, 0xbdebf2, FLOOR_BACK_WALL_OPACITY)
             );
+            backWall.name = 'backWall';
             backWall.position.set(footprint.centerX, wallCY, footprint.minZ + 1);
             backWall.renderOrder = WALL_RENDER_ORDER;
             this._applyFloorGradientMaterial(backWall.material, floor);
@@ -1771,6 +1875,7 @@ export class CanteenScene {
                 new THREE.BoxGeometry(2, WALL_H, footprint.depth),
                 meshMat(this.THREE, 0xbdebf2, FLOOR_SIDE_WALL_OPACITY)
             );
+            leftWall.name = 'leftWall';
             leftWall.position.set(footprint.minX, wallCY, fz);
             leftWall.renderOrder = WALL_RENDER_ORDER;
             this._applyFloorGradientMaterial(leftWall.material, floor);
@@ -1780,6 +1885,7 @@ export class CanteenScene {
                 new THREE.BoxGeometry(2, WALL_H, footprint.depth),
                 meshMat(this.THREE, 0xbdebf2, FLOOR_SIDE_WALL_OPACITY)
             );
+            rightWall.name = 'rightWall';
             rightWall.position.set(footprint.maxX, wallCY, fz);
             rightWall.renderOrder = WALL_RENDER_ORDER;
             this._applyFloorGradientMaterial(rightWall.material, floor);
@@ -1867,7 +1973,7 @@ export class CanteenScene {
         // a pure vertical top-down camera, so upright menu boards keep a face.
         const topCameraZ = Math.max(FOCUS_TOP_CAMERA_Z, fp.maxZ + FOCUS_TOP_OBLIQUE_Z_PADDING);
         const expandedHeight = Math.max(FOCUS_EXPANDED_MIN_HEIGHT, FOCUS_EXPANDED_CAMERA_Y_PADDING,
-            footprint.width * 1.02, footprint.depth * 1.95);
+            footprint.width * 0.85, footprint.depth * 1.58);
         const expandedCameraZ = Math.max(FOCUS_EXPANDED_CAMERA_Z, fp.maxZ + FOCUS_EXPANDED_OBLIQUE_Z_PADDING);
 
         return {
@@ -2011,13 +2117,42 @@ export class CanteenScene {
 
     // focus mode renders selected floor only; overview restores every floor group.
     _animateFloors() {
+        const floors = this._lastFrame?.floors;
+        const sortedYs = floors
+            ? [...floors].sort((a, b) => (a.baseY || 0) - (b.baseY || 0)).map(f => f.floor_id)
+            : [];
         this._floorGroups.forEach((fg, floorId) => {
-            const floor = this._lastFrame?.floors.find(fl => fl.floor_id === floorId);
+            const floor = floors?.find(fl => fl.floor_id === floorId);
             const gradient = this._floorGradientDisplay(floor);
             fg.visible = this.mode !== 'focus' || this.focusFloorId == null || floorId === this.focusFloorId;
-            fg.position.x = 0;
-            fg.position.z = gradient.zOffset;
+            fg.position.x = this.mode === 'focus' ? -30 : 0;
+            const rank = sortedYs.indexOf(floorId);
+            const topRank = sortedYs.length - 1 || 1;
+            const drawerZ = this.mode === 'overview' && rank >= 0
+                ? OVERVIEW_DRAWER_Z_OFFSET * (0.5 - rank / (topRank || 1)) : 0;
+            fg.position.z = gradient.zOffset + drawerZ;
             this._floorSlide.set(floorId, 0);
+            if (this.mode === 'focus') {
+                fg.traverse(child => {
+                    const k = child.userData?.kind;
+                    const n = child.name || '';
+                    if (k === 'buildingFrame' || k === 'floorOutline' || k === 'floorEdge' || k === 'stairCore'
+                        || n.includes('entrance') || n.includes('Canopy')
+                        || n.includes('Wall') || n.includes('wall')
+                        || n.includes('column') || n.includes('beam')
+                        || n.includes('sill') || n.includes('shadow band')
+                        || n.includes('post') || n.includes('photoRef')) {
+                        child.visible = false;
+                    }
+                });
+            }
+        });
+        const hideSkeleton = this.mode === 'focus';
+        this.group.children.forEach(child => {
+            const k = child.userData?.kind;
+            if (k === 'buildingFrame' || k === 'stairCore') {
+                child.visible = !hideSkeleton;
+            }
         });
     }
 

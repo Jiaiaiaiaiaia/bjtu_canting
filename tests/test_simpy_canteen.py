@@ -181,8 +181,8 @@ def test_canteen_choose_window_uses_random_choice_when_not_congested():
     assert chosen.id == c.windows[2].id
 
 
-def test_canteen_choose_initial_floor_uses_true_random_not_queue_weight():
-    """初始楼层应是真随机，不应按队伍压力偏向更空楼层。"""
+def test_canteen_choose_initial_floor_always_returns_ground_floor():
+    """初始楼层应始终返回最低开放楼层（一楼入口），不受 rng 影响。"""
     env = simpy.Environment()
     c = Canteen(env, make_def([
         {"floor_id": 1, "windows": {"physical_count": 1, "active_count": 1}, "seats": {"count": 5}},
@@ -192,24 +192,13 @@ def test_canteen_choose_initial_floor_uses_true_random_not_queue_weight():
         c.windows[1].join_queue(Student(id=400 + i, state="queueing"))
 
     class PickSecondEvenIfChoicesExists:
-        def __init__(self):
-            self.choice_called = False
-            self.choices_called = False
-
-        def choices(self, items, weights, k):
-            self.choices_called = True
-            return [items[weights.index(max(weights))]]
-
         def choice(self, items):
-            self.choice_called = True
             return items[1]
 
     rng = PickSecondEvenIfChoicesExists()
     floor_id = c.choose_initial_floor(rng)
 
-    assert floor_id == 2
-    assert rng.choice_called is True
-    assert rng.choices_called is False
+    assert floor_id == 1
 
 
 def test_canteen_choose_window_uses_true_random_not_queue_weight():

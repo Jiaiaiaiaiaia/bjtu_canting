@@ -254,8 +254,7 @@ const canvas = document.getElementById('canteen-canvas');
 const ctx = canvas.getContext('2d');
 const playPauseBtn = document.getElementById('play-pause-btn');
 const endBtn = document.getElementById('end-btn');
-const speedRange = document.getElementById('speed-range');
-const speedLabel = document.getElementById('speed-label');
+const speedBtnGroup = document.getElementById('speed-btn-group');
 const canteenSwitcher = document.getElementById('canteen-switcher');
 const floorTabs = document.getElementById('floor-tabs');
 const infoPanel = document.querySelector('.info-panel');
@@ -359,10 +358,24 @@ async function finishSimulation() {
     }
 }
 
-speedRange.addEventListener('input', () => {
-    state.speed = SPEED_MAP[speedRange.value];
-    speedLabel.textContent = `×${state.speed}`;
+function setSpeed(idx) {
+    if (idx < 0 || idx >= SPEED_MAP.length) return;
+    state.speed = SPEED_MAP[idx];
+    speedBtnGroup.querySelectorAll('.speed-btn').forEach(b => {
+        b.classList.toggle('active', Number(b.dataset.speed) === idx);
+    });
+    document.dispatchEvent(new CustomEvent('canteen:speed-sync', { detail: { speedIndex: idx } }));
     if (state.timer) { stopLoop(); startLoop(); }
+}
+
+speedBtnGroup.addEventListener('click', (e) => {
+    const btn = e.target.closest('.speed-btn');
+    if (!btn) return;
+    setSpeed(Number(btn.dataset.speed));
+});
+
+document.addEventListener('canteen:speed-change', (e) => {
+    setSpeed(e.detail.speedIndex);
 });
 
 function resetSimulationState() {

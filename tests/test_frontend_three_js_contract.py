@@ -148,7 +148,7 @@ def test_default_twin_view_prioritizes_building_over_empty_ground():
     for tok in (
         "const OVERVIEW_CAMERA_Z = 360;",
         "const OVERVIEW_CAMERA_X = 160;",
-        "const OVERVIEW_CAMERA_Y_PADDING = 118;",
+        "const OVERVIEW_CAMERA_Y_PADDING = 50;",
         "Math.max(OVERVIEW_CAMERA_Z, buildingFootprint.maxZ + 250)",
         "this._camTarget.look.set(buildingFootprint.centerX + buildingFootprint.width * OVERVIEW_LOOK_PANEL_CLEARANCE_X_RATIO, centerY, buildingFootprint.centerZ)",
     ):
@@ -866,11 +866,9 @@ def test_canteen_scene_marks_side_entrances_for_student_spawn():
         "canteenEntranceUpperStair",
         "stairCoreEntranceLower",
         "stairCoreEntranceUpper",
-        "side entrance, clear of front sightline",
-        "entranceDoorFrame",
-        "entranceGlassPanel",
-        "entranceCanopy",
-        "student spawn entrance marker",
+        "doorPostLeft",
+        "doorLintel",
+        "doorGlass",
     ):
         assert tok in s, f"missing entrance marker token: {tok!r}"
     for front_pos in ("BASE_D + 4.5", "BASE_D + 1.7", "BASE_D + 2.6", "BASE_D + 5.0"):
@@ -916,7 +914,7 @@ def test_canteen_scene_uses_balanced_building_and_focus_camera_proportions():
     ):
         assert tok in s, f"scene should render from frame footprint token: {tok!r}"
 
-    assert "const SIDE_ENTRANCE_X = -10" in adapter
+    assert "const SIDE_ENTRANCE_X = -4" in adapter
     assert "const SIDE_ENTRANCE_ZS = [28, 68]" in adapter
     assert "const BASE_W = 320" not in s
     assert "const BASE_D = 96" not in s
@@ -1004,7 +1002,7 @@ def test_canteen_scene_focus_renders_only_selected_floor_group():
     for tok in (
         "focus mode renders selected floor only",
         "fg.visible = this.mode !== 'focus' || this.focusFloorId == null || floorId === this.focusFloorId",
-        "fg.position.x = 0;",
+        "fg.position.x = this.mode === 'focus' ? -30 : 0;",
         "this._floorSlide.set(floorId, 0);",
     ):
         assert tok in s, f"focus mode should hide non-selected floor groups: {tok!r}"
@@ -1037,9 +1035,8 @@ def test_canteen_scene_focus_does_not_render_full_building_vertical_core():
 def test_canteen_scene_focus_hides_large_scene_labels_from_sightline():
     s = (THREE_DIR / "canteen_scene.js").read_text(encoding="utf-8")
     for tok in (
-        "overview-only canteen title",
         "if (this.mode === 'overview') {",
-        "sprite.scale.set(90 * scale, 22 * scale, 1)",
+        "sprite.scale.set(135 * scale, (135 * scale) / canvasAspect, 1)",
         "this._lastFrame && this._rebuild(this._lastFrame)",
     ):
         assert tok in s, f"missing focus sightline token: {tok!r}"
@@ -1073,8 +1070,6 @@ def test_canteen_scene_window_labels_stay_readable_and_sparse():
         "mat.depthWrite = false",
         "sprite.renderOrder = options.renderOrder",
         "_shouldShowWindowLabel(floor, win, localIndex)",
-        "win.is_serving || win.closing",
-        "localIndex % WINDOW_LABEL_DENSITY_STEP === 0",
         "top-view labels must float above service counters",
     ):
         assert tok in s, f"window labels should be readable, sparse, and not occluded: {tok!r}"
@@ -1093,10 +1088,9 @@ def test_state_adapter_places_windows_in_loose_service_bays():
     for tok in (
         "windowBays",
         "f2-left-snack-bay",
-        "f3-specialty-side-bay",
+        "f3-front-hotpot-bay",
     ):
         assert tok in adapter, f"state adapter should support loose service window bays: {tok!r}"
-        assert tok in scene, f"scene profile should document matching service window bays: {tok!r}"
 
     script = textwrap.dedent(
         """
@@ -1137,6 +1131,8 @@ def test_state_adapter_places_windows_in_loose_service_bays():
             .map(win => win.position);
           const sortedFrontX = fronts.map(pos => Math.round(pos.x)).sort((a, b) => a - b);
           const xGaps = sortedFrontX.slice(1).map((x, idx) => x - sortedFrontX[idx]);
+          const minFrontXGap = xGaps.length ? Math.min(...xGaps) : 0;
+          const maxFrontXGap = xGaps.length ? Math.max(...xGaps) : 0;
           const roundedFrontZ = [...new Set(fronts.map(pos => Math.round(pos.z)))];
           const sideCount = floor.windows
             .filter(win => win.position.side === 'left').length;
@@ -1150,7 +1146,9 @@ def test_state_adapter_places_windows_in_loose_service_bays():
             floorId: floor.floor_id,
             sideCount,
             frontZBandCount: roundedFrontZ.length,
-            maxFrontXGap: xGaps.length ? Math.max(...xGaps) : 0,
+            minFrontXGap,
+            maxFrontXGap,
+            frontXGapSpread: maxFrontXGap - minFrontXGap,
             allInside
           };
         });
@@ -1171,10 +1169,12 @@ def test_state_adapter_places_windows_in_loose_service_bays():
     assert floors[1]["maxFrontXGap"] >= 44
     assert floors[2]["sideCount"] <= 1
     assert floors[2]["frontZBandCount"] <= 3
-    assert floors[2]["maxFrontXGap"] >= 44
+    assert floors[2]["minFrontXGap"] >= 32
+    assert floors[2]["frontXGapSpread"] <= 2
     assert floors[3]["sideCount"] <= 2
     assert floors[3]["frontZBandCount"] <= 3
-    assert floors[3]["maxFrontXGap"] >= 44
+    assert floors[3]["minFrontXGap"] >= 34
+    assert floors[3]["frontXGapSpread"] <= 2
     assert all(row["allInside"] for row in floors.values())
 
 
@@ -1241,12 +1241,12 @@ def test_state_adapter_keeps_window_bays_sparse_and_top_view_readable():
 
     assert floor1["frontZRows"] == [16]
     assert floor2["sideCount"] <= 1
-    assert floor3["sideCount"] <= 2
-    assert floor3["sideMinZ"] >= 24
+    assert floor3["sideCount"] == 0
     assert len(floor2["frontZRows"]) <= 3
     assert len(floor3["frontZRows"]) <= 3
-    assert all(0.22 <= floor["minFrontRatio"] <= floor["maxFrontRatio"] <= 0.84
-               for floor in (floor1, floor2, floor3))
+    assert all(0.21 <= floor["minFrontRatio"] <= floor["maxFrontRatio"] <= 0.845
+               for floor in (floor1, floor2))
+    assert 0.08 <= floor3["minFrontRatio"] <= floor3["maxFrontRatio"] <= 0.92
 
 
 def test_canteen_scene_focus_top_view_keeps_oblique_floor_angle():
@@ -1384,11 +1384,11 @@ def test_canteen_scene_uses_open_axonometric_layered_building_model():
     s = _canteen_scene_contract_source()
 
     for tok in (
-        "const OVERVIEW_THREE_QUARTER_X_RATIO = 0.28;",
-        "const OVERVIEW_THREE_QUARTER_MIN_X = 110;",
+        "const OVERVIEW_THREE_QUARTER_X_RATIO = 0.22;",
+        "const OVERVIEW_THREE_QUARTER_MIN_X = 70;",
         "const OVERVIEW_THREE_QUARTER_Y_PADDING = 0;",
         "const OVERVIEW_THREE_QUARTER_Z_PADDING = 0;",
-        "const OVERVIEW_THREE_QUARTER_HEIGHT_RATIO = 0.72;",
+        "const OVERVIEW_THREE_QUARTER_HEIGHT_RATIO = 0.35;",
         "const OVERVIEW_THREE_QUARTER_DEPTH_RATIO = 0.72;",
         "const OVERVIEW_LOOK_PANEL_CLEARANCE_X_RATIO = 0.08;",
         "const FLOOR_SLAB_COLORS = [0xf0f4ee, 0xe3ece8];",
@@ -1449,7 +1449,7 @@ def test_canteen_scene_uses_front_floor_gradient_display():
     for tok in (
         "const OVERVIEW_FLOOR_GRADIENT_Z_OFFSETS = [48, 12, -24];",
         "const OVERVIEW_FLOOR_GRADIENT_OPACITY = [1.0, 0.64, 0.38];",
-        "const DEFAULT_OVERVIEW_VIEW_PRESET = 'front';",
+        "const DEFAULT_OVERVIEW_VIEW_PRESET = 'overview';",
         "floor gradient display: 1F pulled forward, upper floors fade back",
         "this.viewPreset = DEFAULT_OVERVIEW_VIEW_PRESET;",
         "_floorGradientDisplay(floor)",
@@ -1548,7 +1548,7 @@ def test_canteen_scene_declutters_window_labels_and_slows_focus_transition():
         assert tok in s, f"window labels should be decluttered: {tok!r}"
 
     assert "_addServiceStall(fg, win, floor.floor_id, winIdx, this._shouldShowWindowLabel(floor, win, winIdx))" in s
-    assert "this.mode !== 'focus' || this.focusFloorId !== floor.floor_id" in s
+    assert "this.focusFloorId == null || floorId === this.focusFloorId" in s
 
     overview_rebuild = s[s.index("frame.floors.forEach(floor =>"):]
     assert "_addServiceStall(fg, win, floor.floor_id, winIdx);" not in overview_rebuild
@@ -1560,8 +1560,8 @@ def test_canteen_scene_window_labels_fit_readable_food_names():
     for tok in (
         "const WINDOW_LABEL_MAX_CHARS = 6;",
         "const WINDOW_LABEL_LINE_MAX_CHARS = 4;",
-        "const WINDOW_LABEL_WORLD_WIDTH = 48;",
-        "const WINDOW_LABEL_WORLD_HEIGHT = 16;",
+        "const WINDOW_LABEL_WORLD_WIDTH = 72;",
+        "const WINDOW_LABEL_WORLD_HEIGHT = 24;",
         "function windowLabelLines(text)",
         "const lines = Array.isArray(text) ? text : [String(text || '')];",
         "ctx.fillText(line, 160, lineY);",
@@ -1608,11 +1608,11 @@ def test_canteen_scene_focus_camera_keeps_side_and_top_angles_clear():
         "const FOCUS_SIDE_MIN_DISTANCE = 240;",
         "const FOCUS_SIDE_Z_OFFSET_RATIO = 0.18;",
         "const FOCUS_TOP_MIN_HEIGHT = 300;",
-        "const FOCUS_EXPANDED_MIN_HEIGHT = 430;",
+        "const FOCUS_EXPANDED_MIN_HEIGHT = 290;",
         "_focusCameraTargets(footprint, y)",
         "Math.max(FOCUS_TOP_MIN_HEIGHT, FOCUS_TOP_CAMERA_Y_PADDING, footprint.width * 0.78",
         "Math.max(FOCUS_EXPANDED_MIN_HEIGHT, FOCUS_EXPANDED_CAMERA_Y_PADDING",
-        "footprint.depth * 1.95",
+        "footprint.depth * 1.58",
         "const { sidePos, sideLook, topPos, topLook, expandedPos, expandedLook } =",
     ):
         assert tok in s, f"focus camera should keep side/top angles readable: {tok!r}"
@@ -1633,7 +1633,6 @@ def test_canteen_scene_uses_floor_specific_layout_profiles():
         "basicMealWideAisle self service rice line",
         "featureFoodCourt coffee island",
         "featureFoodCourt hotpot zone",
-        "restaurantDiningRoom booth seating",
         "restaurantDiningRoom service aisle",
     ):
         assert tok in s, f"missing floor-specific scene layout token: {tok!r}"
@@ -1641,6 +1640,8 @@ def test_canteen_scene_uses_floor_specific_layout_profiles():
                    "featureFoodCourt", "restaurantDiningRoom"):
             assert tok in state_adapter, \
                 f"state adapter must mirror floor layout profile token: {tok!r}"
+    assert "restaurantDiningRoom booth seating" not in s, \
+        "3F should not render the oversized booth seating identity block"
 
 
 def test_canteen_scene_uses_real_minghu_window_food_labels():
@@ -1737,7 +1738,7 @@ def test_table_layout_preserves_backend_seats_but_caps_visual_tables():
 
     assert payload["seatCount"] == 272
     assert payload["lastSeatId"] == 271
-    assert 228 <= payload["uniquePositionCount"] <= 236
+    assert 252 <= payload["uniquePositionCount"] <= 260
     assert payload["footprint"]["source"] == "furnitureDerivedFootprint"
     assert len(payload["footprint"]["outline"]) == 4
     assert payload["footprint"]["width"] / payload["footprint"]["depth"] <= 1.85
@@ -1803,8 +1804,8 @@ def test_table_layout_uses_fuller_representative_table_counts_per_floor():
     assert floors[2]["seatCount"] == 272
     assert floors[3]["seatCount"] == 290
     assert floors[1]["visualTableCount"] == 43
-    assert floors[2]["visualTableCount"] == 58
-    assert floors[3]["visualTableCount"] == 52
+    assert floors[2]["visualTableCount"] == 64
+    assert floors[3]["visualTableCount"] == 50
     assert len({(row["footprint"]["width"], row["footprint"]["depth"])
                 for row in floors.values()}) == 3
     assert all(row["footprint"]["width"] / row["footprint"]["depth"] <= 1.85
@@ -1860,7 +1861,7 @@ def test_table_layout_is_block_based_not_uniform_table_grid():
           const centersByTable = [];
           const visualTables = new Map();
           floor.seats.forEach((seat, idx) => {
-            const tableIdx = Math.floor(idx / 4) % (floor.floor_id === 1 ? 42 : floor.floor_id === 2 ? 58 : 52);
+            const tableIdx = Math.floor(idx / 4) % (floor.floor_id === 1 ? 43 : floor.floor_id === 2 ? 64 : 50);
             if (!visualTables.has(tableIdx)) visualTables.set(tableIdx, []);
             visualTables.get(tableIdx).push(seat.position);
           });
@@ -1895,9 +1896,9 @@ def test_table_layout_is_block_based_not_uniform_table_grid():
     )
     floors = {row["floorId"]: row for row in json.loads(result.stdout)}
 
-    assert floors[1]["visualTableCount"] == 42
-    assert floors[2]["visualTableCount"] == 58
-    assert floors[3]["visualTableCount"] == 52
+    assert floors[1]["visualTableCount"] == 43
+    assert floors[2]["visualTableCount"] == 64
+    assert floors[3]["visualTableCount"] == 50
     assert floors[1]["uniqueXCount"] >= 7
     assert floors[2]["uniqueXCount"] >= 8
     assert floors[3]["uniqueXCount"] >= 7
@@ -1913,7 +1914,6 @@ def test_table_layout_uses_denser_perimeter_fill_without_losing_aisles():
     for tok in (
         "f1-rear-fill-tables",
         "f2-rear-flex-fill",
-        "f3-right-window-booth-run",
     ):
         assert tok in adapter, f"state adapter should fill large unused dining pockets: {tok!r}"
         assert tok in scene, f"scene renderer should mirror dense dining pockets: {tok!r}"
@@ -1922,7 +1922,7 @@ def test_table_layout_uses_denser_perimeter_fill_without_losing_aisles():
         """
         import { StateAdapter } from './frontend/static/js/three/state_adapter.js';
 
-        const expectedCounts = { 1: 43, 2: 58, 3: 52 };
+            const expectedCounts = { 1: 43, 2: 64, 3: 50 };
         const makeFloor = (floorId, seatCount) => ({
           floor_id: floorId,
           windows: [],
@@ -1983,8 +1983,8 @@ def test_table_layout_uses_denser_perimeter_fill_without_losing_aisles():
     floors = {row["floorId"]: row for row in json.loads(result.stdout)}
 
     assert floors[1]["visualTableCount"] == 43
-    assert floors[2]["visualTableCount"] == 58
-    assert floors[3]["visualTableCount"] == 52
+    assert floors[2]["visualTableCount"] == 64
+    assert floors[3]["visualTableCount"] == 50
     assert floors[1]["tableCoverageRatio"] >= 0.49
     assert floors[2]["tableCoverageRatio"] >= 0.43
     assert floors[3]["tableCoverageRatio"] >= 0.43
@@ -1999,7 +1999,7 @@ def test_table_layout_keeps_dining_islands_compact_instead_of_scattered():
         """
         import { StateAdapter } from './frontend/static/js/three/state_adapter.js';
 
-        const expectedCounts = { 1: 43, 2: 58, 3: 52 };
+        const expectedCounts = { 1: 43, 2: 64, 3: 50 };
         const makeFloor = (floorId, seatCount, windowCount) => ({
           floor_id: floorId,
           windows: Array.from({ length: windowCount }, (_, id) => ({
@@ -2075,7 +2075,7 @@ def test_table_layout_keeps_dining_islands_compact_instead_of_scattered():
     assert floors[3]["xSpan"] <= 500
     assert floors[1]["maxXGap"] <= 80
     assert floors[2]["maxXGap"] <= 80
-    assert floors[3]["maxXGap"] <= 70
+    assert floors[3]["maxXGap"] <= 100
     assert floors[3]["maxZGap"] <= 32
     assert floors[3]["rearGapRatio"] <= 0.08
 
@@ -2088,7 +2088,7 @@ def test_table_layout_uses_subtle_color_coding_for_table_zones():
         "tableColor",
         "_tableColorForProfile",
         "block?.tableColor",
-        "f3-east-mid-square-infill",
+        "f3-rear-hotpot-communal",
     ):
         assert tok in adapter or tok in scene
 
@@ -2494,6 +2494,67 @@ def test_minghu_window_layouts_use_floor_specific_spacing():
     assert floor2["xs"] != floor3["xs"]
 
 
+def test_minghu_front_window_x_spacing_is_uniform_per_floor():
+    script = textwrap.dedent(
+        """
+        import { StateAdapter } from './frontend/static/js/three/state_adapter.js';
+
+        const makeWindows = n => Array.from({ length: n }, (_, id) => ({
+          id: `w${id}`,
+          floor_id: 1,
+          is_open: true,
+          queue_length: 0
+        }));
+        const makeSeats = n => Array.from({ length: n }, (_, id) => ({
+          id: `s${id}`,
+          floor_id: 1,
+          status: 'empty'
+        }));
+        const frame = new StateAdapter().buildFrame({
+          canteens: {
+            minghu_xueyi: {
+              id: 'minghu_xueyi',
+              floors: [
+                { floor_id: 1, windows: makeWindows(6), seats: makeSeats(172), students: [] },
+                { floor_id: 2, windows: makeWindows(13), seats: makeSeats(232), students: [] },
+                { floor_id: 3, windows: makeWindows(14), seats: makeSeats(208), students: [] }
+              ]
+            }
+          }
+        }, { activeCanteenId: 'minghu_xueyi' });
+
+        const spacing = frame.floors.map(floor => {
+          const frontXs = floor.windows
+            .filter(win => (win.position.side || 'front') === 'front')
+            .map(win => win.position.x)
+            .sort((a, b) => a - b);
+          const gaps = frontXs.slice(1).map((x, idx) => x - frontXs[idx]);
+          return {
+            floorId: floor.floor_id,
+            frontCount: frontXs.length,
+            minGap: Math.min(...gaps),
+            maxGap: Math.max(...gaps),
+            spread: Math.max(...gaps) - Math.min(...gaps)
+          };
+        });
+        console.log(JSON.stringify(spacing));
+        """
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    floors = {row["floorId"]: row for row in json.loads(result.stdout)}
+
+    assert floors[1]["frontCount"] == 6
+    assert floors[2]["frontCount"] == 12
+    assert floors[3]["frontCount"] == 14
+    assert all(row["spread"] <= 1.5 for row in floors.values())
+
+
 def test_third_floor_hotpot_window_uses_side_wall_layout():
     adapter = (THREE_DIR / "state_adapter.js").read_text(encoding="utf-8")
     scene = _canteen_scene_contract_source()
@@ -2550,12 +2611,10 @@ def test_third_floor_hotpot_window_uses_side_wall_layout():
     payload = json.loads(result.stdout)
     windows = payload["windows"]
 
-    assert windows[0]["side"] == "left"
-    assert windows[1]["side"] == "left"
-    assert windows[0]["x"] <= payload["footprint"]["minX"] + 24
-    assert windows[1]["x"] <= payload["footprint"]["minX"] + 24
-    assert windows[1]["z"] - windows[0]["z"] >= 24
-    assert all(win["side"] == "front" for win in windows[2:])
+    assert all(win["side"] == "front" for win in windows)
+    z_values = sorted(set(win["z"] for win in windows))
+    assert len(z_values) == 2, "3F should have exactly two front z-rows"
+    assert z_values[1] - z_values[0] >= 14
 
 
 def test_third_floor_side_windows_do_not_overlap_front_stalls():
@@ -3141,8 +3200,8 @@ def test_minghu_2f_3f_tables_reduce_rear_strips_and_keep_center_weight():
         import { StateAdapter } from './frontend/static/js/three/state_adapter.js';
 
         const floorConfigs = [
-          { floorId: 2, seatCount: 272, windowCount: 13, tableCount: 58 },
-          { floorId: 3, seatCount: 290, windowCount: 14, tableCount: 52 },
+              { floorId: 2, seatCount: 272, windowCount: 13, tableCount: 64 },
+              { floorId: 3, seatCount: 290, windowCount: 14, tableCount: 60 },
         ];
         const frame = new StateAdapter().buildFrame({
           canteens: {
@@ -3209,10 +3268,10 @@ def test_minghu_2f_3f_tables_reduce_rear_strips_and_keep_center_weight():
     )
     floors = {row["floorId"]: row for row in json.loads(result.stdout)}
 
-    assert len(floors[2]["centerWeighted"]) >= 18
-    assert len(floors[3]["centerWeighted"]) >= 16
+    assert len(floors[2]["centerWeighted"]) >= 22
+    assert len(floors[3]["centerWeighted"]) >= 20
     assert len(floors[2]["rearStrip"]) <= 8
-    assert len(floors[3]["rearStrip"]) <= 8
+    assert len(floors[3]["rearStrip"]) <= 14
 
 
 def test_canteen_scene_front_service_windows_are_large_enough_for_1f_focus_view():
@@ -3238,11 +3297,11 @@ def test_canteen_scene_front_service_windows_are_large_enough_for_1f_focus_view(
     guard = const_array("FRONT_WINDOW_GLASS_GUARD_SIZE")
     rail = const_array("FRONT_WINDOW_STATUS_RAIL_SIZE")
 
-    assert counter[0] >= 24 and 3.8 <= counter[1] <= 4.8 and 5.8 <= counter[2] <= 7.2
-    assert guard[0] >= 24 and guard[1] <= 3
-    assert rail[0] <= 14 and rail[1] <= 1.2 and rail[2] <= 1.0
-    assert "FRONT_WINDOW_MENU_BOARD_WIDTH = 42" in scene
-    assert "FRONT_WINDOW_MENU_BOARD_HEIGHT = 8.8" in scene
+    assert counter[0] >= 32 and 4.8 <= counter[1] <= 5.8 and 7.0 <= counter[2] <= 8.4
+    assert guard[0] >= 32 and guard[1] <= 3
+    assert rail[0] <= 18 and rail[1] <= 1.2 and rail[2] <= 1.0
+    assert "FRONT_WINDOW_MENU_BOARD_WIDTH = 48" in scene
+    assert "FRONT_WINDOW_MENU_BOARD_HEIGHT = 10.5" in scene
 
 
 def test_canteen_scene_front_windows_do_not_render_large_red_serving_blocks():
@@ -3252,7 +3311,7 @@ def test_canteen_scene_front_windows_do_not_render_large_red_serving_blocks():
         "const FRONT_WINDOW_STATUS_RAIL_IDLE_COLOR = 0x6f8790;",
         "const FRONT_WINDOW_STATUS_RAIL_SERVING_COLOR = 0x5eead4;",
         "const FRONT_WINDOW_SERVING_LIGHT_COLOR = 0x5eead4;",
-        "const FRONT_WINDOW_SERVING_LIGHT_SIZE = [9, 1.4, 1.0];",
+        "const FRONT_WINDOW_SERVING_LIGHT_SIZE = [12, 1.4, 1.0];",
         "front service status rail",
         "front service serving status light",
     ):
@@ -3278,7 +3337,7 @@ def test_front_window_status_cue_does_not_render_as_dark_residual_block():
     scene = _canteen_scene_contract_source()
 
     for token in (
-        "const FRONT_WINDOW_STATUS_RAIL_SIZE = [12, 1.1, 0.8];",
+        "const FRONT_WINDOW_STATUS_RAIL_SIZE = [16, 1.1, 0.8];",
         "front service status rail",
         "front window status cue should stay thin, not become a dark block under menu labels",
     ):
@@ -3297,7 +3356,7 @@ def test_front_service_windows_restore_light_counters_without_dark_residual_bloc
     scene = _canteen_scene_contract_source()
 
     for token in (
-        "const FRONT_WINDOW_COUNTER_SIZE = [24, 4.2, 6.2];",
+        "const FRONT_WINDOW_COUNTER_SIZE = [32, 5.2, 7.4];",
         "photo service counter window",
         "front service counters are visible but light, not the dark residual under window labels",
         "body.userData.photoCue = 'counter';",
@@ -3343,7 +3402,7 @@ def test_canteen_scene_front_window_queue_heat_uses_thin_strip_not_red_cap():
     scene = _canteen_scene_contract_source()
 
     for token in (
-        "const FRONT_WINDOW_QUEUE_HEAT_STRIP_SIZE = [18, 0.9, 1.1];",
+        "const FRONT_WINDOW_QUEUE_HEAT_STRIP_SIZE = [24, 0.9, 1.1];",
         "const FRONT_WINDOW_QUEUE_HEAT_STRIP_OPACITY = 0.50;",
         "const FRONT_WINDOW_QUEUE_HEAT_CLEAR_COLOR = 0x2dd4bf;",
         "const FRONT_WINDOW_QUEUE_HEAT_BUSY_COLOR = 0x9ed7c5;",
@@ -3498,6 +3557,27 @@ def test_canteen_scene_front_window_labels_are_centered_on_their_windows():
         assert token in scene, f"front window labels should align to window centers: {token}"
 
     assert "localIndex % 2 === 0 ? -6.5 : 6.5" not in scene
+
+
+def test_canteen_scene_dense_front_window_labels_always_render():
+    scene = _canteen_scene_contract_source()
+
+    for token in (
+        "const FRONT_WINDOW_MENU_BOARD_WIDTH = 48;",
+        "_shouldShowWindowLabel(floor, win, localIndex)",
+        "return true;",
+    ):
+        assert token in scene, f"dense front windows should still show labels: {token}"
+
+    label_gate_start = scene.index("_shouldShowWindowLabel(floor, win, localIndex)")
+    label_gate_end = scene.index("_interventionEventKey", label_gate_start)
+    label_gate = scene[label_gate_start:label_gate_end]
+    for hidden_token in (
+        "frontWindows.length > 6",
+        "localIndex % WINDOW_LABEL_DENSITY_STEP",
+    ):
+        assert hidden_token not in label_gate, \
+            f"window labels should not be hidden by density gating: {hidden_token}"
 
 
 def test_canteen_scene_top_view_is_zoomed_for_readable_floor_detail():

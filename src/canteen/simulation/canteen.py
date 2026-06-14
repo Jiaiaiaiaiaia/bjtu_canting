@@ -246,9 +246,12 @@ class Canteen:
         return source.choice(items)
 
     def choose_initial_floor(self, rng=None) -> int:
-        """学生进入食堂后的初始楼层：在开放楼层中真随机抽样。"""
+        """学生进入食堂后的初始楼层：始终从一楼（最低开放楼层）进入。
+
+        建筑入口在一楼，学生先到一楼再由 choose_window 按队伍压力路由到高楼层。
+        """
         floor_ids = self.floor_ids_with_open_windows()
-        return self._random_choice(floor_ids, rng)
+        return min(floor_ids)
 
     def stair_travel_time(self, from_floor_id: int, target_floor_id: int) -> float:
         """同一食堂内通过楼梯换层的通行时间。"""
@@ -259,10 +262,12 @@ class Canteen:
         )
 
     # 当前楼层总队列比其他楼层平均总队列长超过此阈值时，允许跨层路由。
-    CROSS_FLOOR_QUEUE_THRESHOLD = 10
+    CROSS_FLOOR_QUEUE_THRESHOLD = 5
+    # 部分学生自发选择其他楼层（偏好该层特色餐饮），与拥挤无关。
+    CROSS_FLOOR_SPONTANEOUS_RATE = 0.60
 
     def choose_window(self, rng=None, current_floor_id: Optional[int] = None) -> Window:
-        """学生选窗口：优先同楼层，但当同楼层总队列比其他楼层明显更长时跨层路由。"""
+        """学生选窗口：优先同楼层，但部分学生自发去其他楼层、拥挤时也跨层路由。"""
         open_windows = self._open_windows()
         current_floor_windows = [
             w for w in open_windows
@@ -271,11 +276,14 @@ class Canteen:
         if not current_floor_windows:
             return self._random_choice(open_windows, rng)
 
-        # 按楼层分组，比较总队列长度
         other_floor_windows = [w for w in open_windows if w.floor_id != current_floor_id]
         if other_floor_windows:
+            # 自发跨层：学生偏好其他楼层的特色餐饮
+            if hasattr(rng, 'random') and rng.random() < self.CROSS_FLOOR_SPONTANEOUS_RATE:
+                return self._random_choice(open_windows, rng)
+
+            # 按楼层分组，比较总队列长度
             cur_total = sum(w.queue_length for w in current_floor_windows)
-            # 其他楼层中队列最短的
             other_floors: dict = {}
             for w in other_floor_windows:
                 other_floors.setdefault(w.floor_id, []).append(w)
@@ -283,7 +291,6 @@ class Canteen:
                 sum(w.queue_length for w in ws) for ws in other_floors.values()
             )
             if cur_total - best_other_total >= self.CROSS_FLOOR_QUEUE_THRESHOLD:
-                # 路由到队列最短的那个楼层
                 best_fid = min(
                     other_floors, key=lambda fid: sum(w.queue_length for w in other_floors[fid])
                 )
@@ -311,7 +318,8 @@ class Canteen:
             self.seat_waiting_students.remove(student)
 
     def get_seat_prefer_floor(self, floor_id: Optional[int]):
-        """取座位：同楼层有空座时优先同楼层，否则换到任意可用楼层。"""
+        """取座位：同楼层有空座时优先同楼层，否则换到任意可用楼层；同层/全局内随机选取。"""
+        random.shuffle(self.seat_pool.items)
         if floor_id is not None and any(
             seat.floor_id == floor_id for seat in self.seat_pool.items
         ):

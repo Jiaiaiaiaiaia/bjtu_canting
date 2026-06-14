@@ -28,6 +28,13 @@ const CSS = `
 #${PANEL_ID} .ops-kpi .cell span{font-size:11px;color:#8fb7b2}
 #${PANEL_ID} .ops-title{font-size:11px;color:#8fb7b2;letter-spacing:1px;margin:2px 0}
 #${PANEL_ID} .ops-run-controls{display:grid;grid-template-columns:1fr;gap:6px}
+#${PANEL_ID} .ops-speed{display:flex;border:1px solid #2c5366;border-radius:5px;overflow:hidden}
+#${PANEL_ID} .ops-speed button{flex:1;padding:4px 0;font-size:11px;font-weight:600;
+ border:none;border-right:1px solid #2c5366;background:#0d2030;color:#8fb7b2;cursor:pointer;
+ transition:background .15s,color .15s}
+#${PANEL_ID} .ops-speed button:last-child{border-right:none}
+#${PANEL_ID} .ops-speed button:hover{background:#163040;color:#cfe9e6}
+#${PANEL_ID} .ops-speed button.active{background:rgba(45,212,191,.25);color:#2dd4bf}
 #${PANEL_ID} .ops-finish-btn{cursor:pointer;border-radius:6px;border:1px solid #b45b63;
  background:rgba(128,25,36,.72);color:#ffe2e5;font-size:12px;font-weight:700;
  padding:7px 10px;text-align:center}
@@ -89,6 +96,12 @@ export class InterventionUI {
             <div>
               <div class="ops-title">运行控制</div>
               <div class="ops-run-controls">
+                <div class="ops-speed">
+                  <button type="button" data-speed="0">1×</button>
+                  <button type="button" data-speed="1" class="active">2×</button>
+                  <button type="button" data-speed="2">5×</button>
+                  <button type="button" data-speed="3">10×</button>
+                </div>
                 <button type="button" class="ops-finish-btn">结束仿真</button>
               </div>
             </div>
@@ -122,6 +135,22 @@ export class InterventionUI {
         this.kpiEl = root.querySelector('.ops-kpi');
         this.finishBtn = root.querySelector('.ops-finish-btn');
         this.finishBtn?.addEventListener('click', () => this._finish());
+        this._speedEl = root.querySelector('.ops-speed');
+        this._speedEl?.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-speed]');
+            if (!btn) return;
+            this._speedEl.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.dispatchEvent(new CustomEvent('canteen:speed-change', {
+                detail: { speedIndex: Number(btn.dataset.speed) },
+            }));
+        });
+        this._syncHandler = (e) => {
+            this._speedEl?.querySelectorAll('button').forEach(b => {
+                b.classList.toggle('active', Number(b.dataset.speed) === e.detail.speedIndex);
+            });
+        };
+        document.addEventListener('canteen:speed-sync', this._syncHandler);
         this.gridEl = root.querySelector('.ops-grid');
         this.logEl = root.querySelector('.ops-log');
     }
@@ -135,6 +164,10 @@ export class InterventionUI {
     }
 
     dispose() {
+        if (this._syncHandler) {
+            document.removeEventListener('canteen:speed-sync', this._syncHandler);
+            this._syncHandler = null;
+        }
         this._teardownDom();
         this._busy.clear();
         this._finishing = false;

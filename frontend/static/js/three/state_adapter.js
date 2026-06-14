@@ -29,7 +29,7 @@ const TABLE_CLEARANCE_Z = 42;
 const WINDOW_CLEARANCE_X = 72;
 const WINDOW_CLEARANCE_Z = 46;
 const STAIR_CORE_WIDTH = 44;
-const SIDE_ENTRANCE_X = -10;   // fallback：实际入口 x 由 footprint.minX - 10 推导
+const SIDE_ENTRANCE_X = -4;    // 入口 x 偏移：贴近门槛区域（门在 minX-1，门槛延伸到 minX-6）
 const SIDE_ENTRANCE_ZS = [28, 68]; // fallback：实际入口 z 由 footprint.depth 的 30%/70% 推导
 const STUDENT_Y = 7;
 const MAX_UNCAPPED_STUDENTS_PER_FRAME = 180;
@@ -42,6 +42,10 @@ const SCENE_UNITS_PER_METER = 10;
 const SERVICE_TO_TABLE_BUFFER_M = 7.2;
 const ENTRANCE_SPAWN_LANE_X = 3.4;
 const ENTRANCE_SPAWN_LANE_Z = 4.2;
+const DEPART_WALK_MS = 800;        // 离场走向出口持续时间
+const DEPART_TOTAL_MS = DEPART_WALK_MS;
+const DEPART_LERP = 0.12;          // 离场移动插值系数
+const STAIR_STEP_BOB = 4.0;        // 上楼踩步垂直振幅
 const WINDOW_QUEUE_LANES = 3;
 const WINDOW_QUEUE_LANE_DX = 7.2;
 const WINDOW_QUEUE_ROW_DZ = 5.9;
@@ -71,6 +75,9 @@ const MINGHU_FLOOR_LAYOUTS = {
               xStartRatio: 0.70, xEndRatio: 0.82, z: 16,
               bayStaggerZ: [0], minWindowGap: 56 },
         ],
+        uniformFrontWindowSpacing: true,
+        uniformFrontXStartRatio: 0.22,
+        uniformFrontXEndRatio: 0.82,
         windowRows: 1,
         windowZ: [16],
         windowX0: 42,
@@ -121,16 +128,20 @@ const MINGHU_FLOOR_LAYOUTS = {
     2: {
         key: 'featureFoodCourt',
         windowBays: [
-            { id: 'f2-left-snack-bay', side: 'left', weight: 1,
+            { id: 'f2-left-snack-bay', side: 'left', weight: 1, maxCount: 1,
               xInset: 18, zStart: 40, zEnd: 40,
               bayStaggerX: [0], bayStaggerZ: [0] },
-            { id: 'f2-front-coffee-bay', side: 'front', weight: 6,
+            { id: 'f2-front-coffee-bay', side: 'front', weight: 3,
               xStartRatio: 0.24, xEndRatio: 0.44, z: 16,
               bayStaggerZ: [0], minWindowGap: 28 },
-            { id: 'f2-front-hotfood-bay', side: 'front', weight: 6,
+            { id: 'f2-front-hotfood-bay', side: 'front', weight: 4,
               xStartRatio: 0.56, xEndRatio: 0.78, z: 22,
               bayStaggerZ: [0], minWindowGap: 28 },
         ],
+        uniformFrontWindowSpacing: true,
+        uniformFrontSideWindowCount: 1,
+        uniformFrontXStartRatio: 0.22,
+        uniformFrontXEndRatio: 0.84,
         windowRows: 2,
         windowZ: [12, 30],
         windowX0: 42,
@@ -140,20 +151,20 @@ const MINGHU_FLOOR_LAYOUTS = {
         tableShiftX: -5,
         tableZ0: 80,
         tableRowStagger: 10,
-        visibleTableCount: 58,
+        visibleTableCount: 64,
         mainAisleWidth: 68,
         queueBufferDepth: 86,
         tableBlocks: [
             { id: 'f2-left-small-table-bank', type: 'square', tableColor: 0xa0a66a, count: 12, cols: 3,
-              anchor: 'left', left: 70, z: 0, dx: 36, dz: 28 },
-            { id: 'f2-foodcourt-center-island', type: 'square', tableColor: 0xc58c4f, count: 22, cols: 5,
+              anchor: 'left', left: 46, z: 0, dx: 36, dz: 28 },
+            { id: 'f2-foodcourt-center-island', type: 'square', tableColor: 0xc58c4f, count: 26, cols: 5,
               anchor: 'center', offsetX: 0, z: 40, dx: 38, dz: 26 },
-            { id: 'f2-right-communal-bank', type: 'long', tableColor: 0x7d8d65, count: 12, cols: 3,
-              anchor: 'right', right: 70, z: 2, dx: 42, dz: 30 },
+            { id: 'f2-right-communal-bank', type: 'long', tableColor: 0x7d8d65, count: 14, cols: 3,
+              anchor: 'right', right: 52, z: 2, dx: 42, dz: 30 },
             { id: 'f2-mid-right-flex-fill', type: 'square', tableColor: 0xb9856f, count: 6, cols: 3,
-              anchor: 'right', right: 70, z: 148, dx: 38, dz: 30 },
+              anchor: 'right', right: 52, z: 128, dx: 38, dz: 30 },
             { id: 'f2-rear-flex-fill', type: 'square', tableColor: 0xb9856f, count: 6, cols: 3,
-              anchor: 'center', offsetX: -80, z: 167, dx: 40, dz: 33 },
+              anchor: 'center', offsetX: -80, z: 149, dx: 40, dz: 33 },
         ],
         widthBias: 12,
         depthBias: 8,
@@ -166,19 +177,14 @@ const MINGHU_FLOOR_LAYOUTS = {
     3: {
         key: 'restaurantDiningRoom',
         windowBays: [
-            { id: 'f3-specialty-side-bay', side: 'left', weight: 2,
-              xInset: 18, zStart: 28, zEnd: 54,
-              bayStaggerX: [0, 3], bayStaggerZ: [0] },
             { id: 'f3-front-hotpot-bay', side: 'front', weight: 4,
-              xStartRatio: 0.24, xEndRatio: 0.42, z: 16,
-              bayStaggerZ: [0], minWindowGap: 34 },
-            { id: 'f3-front-noodle-bay', side: 'front', weight: 4,
-              xStartRatio: 0.56, xEndRatio: 0.66, z: 28,
-              bayStaggerZ: [0], minWindowGap: 34 },
-            { id: 'f3-front-tea-bay', side: 'front', weight: 4,
-              xStartRatio: 0.66, xEndRatio: 0.82, z: 16,
-              bayStaggerZ: [0], minWindowGap: 34 },
+              xStartRatio: 0.10, xEndRatio: 0.90, z: 14 },
+            { id: 'f3-front-noodle-tea-bay', side: 'front', weight: 3,
+              xStartRatio: 0.157, xEndRatio: 0.729, z: 32 },
         ],
+        uniformFrontWindowSpacing: true,
+        uniformFrontXStartRatio: 0.08,
+        uniformFrontXEndRatio: 0.92,
         windowRows: 2,
         windowZ: [14, 34],
         windowX0: 52,
@@ -192,18 +198,16 @@ const MINGHU_FLOOR_LAYOUTS = {
         tableShiftX: 8,
         tableZ0: 112,
         tableRowStagger: -8,
-        visibleTableCount: 52,
+        visibleTableCount: 50,
         mainAisleWidth: 72,
         queueBufferDepth: 92,
         tableBlocks: [
             { id: 'f3-wall-booth-run', type: 'booth', tableColor: 0x7a5a40, count: 6, cols: 1,
               anchor: 'left', left: 58, z: 0, dx: 0, dz: 28 },
-            { id: 'f3-central-dining-cluster', type: 'square', tableColor: 0x9b7d55, count: 18, cols: 3,
-              anchor: 'center', offsetX: -10, z: 20, dx: 44, dz: 26 },
+            { id: 'f3-central-dining-cluster', type: 'square', tableColor: 0x9b7d55, count: 24, cols: 4,
+              anchor: 'center', offsetX: -10, z: 8, dx: 40, dz: 26 },
             { id: 'f3-left-mid-square-infill', type: 'square', tableColor: 0x8f7d67, count: 6, cols: 2,
               anchor: 'left', left: 126, z: 100, dx: 40, dz: 30 },
-            { id: 'f3-east-mid-square-infill', type: 'square', tableColor: 0x8aa092, count: 8, cols: 2,
-              anchor: 'right', right: 136, z: 64, dx: 42, dz: 32 },
             { id: 'f3-rear-hotpot-communal', type: 'long', tableColor: 0x835f42, count: 8, cols: 4,
               anchor: 'center', offsetX: 44, z: 176, dx: 46, dz: 28 },
             { id: 'f3-right-window-booth-run', type: 'booth', tableColor: 0x4e6b70, count: 6, cols: 1,
@@ -213,7 +217,6 @@ const MINGHU_FLOOR_LAYOUTS = {
         depthBias: 0,
         rearNotchDepth: 0,
         cueNames: [
-            'restaurantDiningRoom booth seating',
             'restaurantDiningRoom service aisle',
         ],
     },
@@ -309,7 +312,7 @@ function tableBlockMetrics(profile, tableCount) {
 }
 
 function serviceWindowMaxZ(profile) {
-    const bayMaxZ = frontWindowBayMaxZ(profile);
+    const bayMaxZ = windowBayMaxZ(profile);
     if (bayMaxZ !== null) return bayMaxZ;
     const frontWindowMaxZ = Math.max(...(profile.windowZ || [14]));
     const sideWindowCount = profile.sideWindowCount || 0;
@@ -415,6 +418,26 @@ function windowBayCounts(total, bays) {
         const index = counts.indexOf(Math.max(...counts));
         counts[index] -= 1;
         assigned -= 1;
+    }
+
+    let surplus = 0;
+    const maxCounts = bays.map(bay => Number.isFinite(bay.maxCount)
+        ? Math.max(0, bay.maxCount)
+        : Infinity);
+    counts.forEach((count, index) => {
+        if (count > maxCounts[index]) {
+            surplus += count - maxCounts[index];
+            counts[index] = maxCounts[index];
+        }
+    });
+    while (surplus > 0) {
+        const candidate = counts
+            .map((count, index) => ({ index, count, room: maxCounts[index] - count }))
+            .filter(item => item.room > 0)
+            .sort((a, b) => a.count - b.count || a.index - b.index)[0];
+        if (!candidate) break;
+        counts[candidate.index] += 1;
+        surplus -= 1;
     }
     return counts;
 }
@@ -640,9 +663,59 @@ function continuousFrontWindowPosition(idx, total, baseY, profile, footprint) {
     };
 }
 
+function uniformFrontWindowPosition(idx, total, baseY, profile, footprint) {
+    if (!profile.uniformFrontWindowSpacing) return null;
+
+    const sideWindowCount = Math.min(profile.uniformFrontSideWindowCount || 0, total);
+    const sideBay = profileWindowBays(profile).find(bay => bay.side === 'left');
+    if (idx < sideWindowCount) {
+        const sideWindowInsetX = profile.sideWindowX ?? sideBay?.xInset ?? 18;
+        const sideWindowZ0 = profile.sideWindowZ0 ?? sideBay?.zStart ?? 18;
+        const sideWindowGap = profile.sideWindowGap ?? sideBay?.sideWindowGap ?? 20;
+        return {
+            x: Math.min(
+                footprint.minX + 24,
+                Math.max(footprint.minX + 8, footprint.minX + sideWindowInsetX)
+            ),
+            y: baseY + 13,
+            z: sideWindowZ0 + idx * sideWindowGap,
+            side: 'left',
+            bayId: sideBay?.id || 'uniform-side-service-window',
+        };
+    }
+
+    const frontIdx = idx - sideWindowCount;
+    const frontTotal = Math.max(1, total - sideWindowCount);
+    const startRatio = profile.uniformFrontXStartRatio ?? 0.18;
+    const endRatio = profile.uniformFrontXEndRatio ?? 0.82;
+    const startX = footprint.minX + footprint.width * startRatio;
+    const endX = footprint.minX + footprint.width * endRatio;
+    const step = frontTotal > 1 ? (endX - startX) / (frontTotal - 1) : 0;
+    const rowCount = Math.max(1, profile.windowRows || 1);
+    const row = rowCount === 1 ? 0 : frontIdx % rowCount;
+    const frontBays = profileWindowBays(profile).filter(bay => bay.side !== 'left');
+    return {
+        x: Math.max(
+            footprint.minX + 32,
+            Math.min(footprint.maxX - 32, startX + frontIdx * step)
+        ),
+        y: baseY + 13,
+        z: Math.max(
+            footprint.minZ + 8,
+            Math.min(footprint.maxZ - 12, (profile.windowZ || [14])[row] ?? 14)
+        ),
+        side: 'front',
+        bayId: frontBays[row % Math.max(1, frontBays.length)]?.id || 'uniform-front-service-row',
+        queueMaxZ: tableZoneStartZ(profile) - CHAIR_DZ - QUEUE_TABLE_BUFFER_Z,
+    };
+}
+
 function windowPositionForProfile(idx, total, baseY, profile, footprint) {
     const continuousPosition = continuousFrontWindowPosition(idx, total, baseY, profile, footprint);
     if (continuousPosition) return continuousPosition;
+
+    const uniformFrontPosition = uniformFrontWindowPosition(idx, total, baseY, profile, footprint);
+    if (uniformFrontPosition) return uniformFrontPosition;
 
     const bayPosition = windowBayPosition(idx, total, baseY, profile, footprint);
     if (bayPosition) return bayPosition;
@@ -905,9 +978,12 @@ function stairSwitchTarget(student, baseY, footprint, sid) {
     const entranceZs = entranceZsForFootprint(footprint);
     const startZ = direction > 0 ? entranceZs[0] : entranceZs[1];
     const endZ   = direction > 0 ? entranceZs[1] : entranceZs[0];
+    // 踩台阶效果：在每个离散 step 内用半正弦模拟抬脚-落脚
+    const inStepFrac = (progress * 8) - Math.floor(progress * 8);
+    const stepBob = Math.sin(inStepFrac * Math.PI) * STAIR_STEP_BOB;
     return {
-        x: sideEntranceXForFootprint(footprint) + 9 + jitter(sid, 11) * 0.45,
-        y: baseY + STUDENT_Y + t * FLOOR_V * (targetFloor - fromFloor),
+        x: sideEntranceXForFootprint(footprint) + 3 + jitter(sid, 11) * 0.45,
+        y: baseY + STUDENT_Y + t * FLOOR_V * (targetFloor - fromFloor) + stepBob,
         z: startZ + t * (endZ - startZ) + jitter(sid, 12) * 0.5,
     };
 }
@@ -1075,10 +1151,12 @@ function attachUnassignedStudents(canteen, floors) {
 export class StateAdapter {
     constructor() {
         this._studentPos = new Map();   // studentId -> {x,y,z} 当前插值位
+        this._departing = new Map();    // studentId -> {pos, target, floorIdx, departTime, student}
     }
 
     reset() {
         this._studentPos.clear();
+        this._departing.clear();
     }
 
     // 把 snapshot 转为渲染目标；students 位置带帧间插值（线性逼近 target）。
@@ -1096,13 +1174,29 @@ export class StateAdapter {
                 seenStudents.add(key);
                 const prev = this._studentPos.get(key);
                 const entry = studentEntranceTarget(layout.baseY, st.target, layout.footprint, st);
+                // 保存学生快照（在 position3d 赋值前，避免循环引用）
+                const studentSnap = {
+                    id: st.id, position: st.position,
+                    floor_id: st.floor_id, queue_index: st.queue_index,
+                    from_floor_id: st.from_floor_id,
+                    target_floor_id: st.target_floor_id,
+                    floor_switch_progress: st.floor_switch_progress,
+                };
+                const isClimbing = st.position === 'floor_switching';
                 const next = prev
-                    ? {
-                        x: prev.x + (st.target.x - prev.x) * LERP_ALPHA,
-                        y: prev.y + (st.target.y - prev.y) * LERP_ALPHA,
-                        z: prev.z + (st.target.z - prev.z) * LERP_ALPHA,
-                    }
+                    ? (isClimbing
+                        ? { x: st.target.x, y: st.target.y, z: st.target.z }
+                        : {
+                            x: prev.x + (st.target.x - prev.x) * LERP_ALPHA,
+                            y: prev.y + (st.target.y - prev.y) * LERP_ALPHA,
+                            z: prev.z + (st.target.z - prev.z) * LERP_ALPHA,
+                        })
                     : entry;
+                next._lastFloorIdx = idx;
+                next._lastTarget = { ...st.target };
+                next._lastStudent = studentSnap;
+                next._lastFootprint = layout.footprint;
+                next._lastBaseY = layout.baseY;
                 this._studentPos.set(key, next);
                 st.position3d = next;
                 st.entry3d = entry;
@@ -1114,9 +1208,67 @@ export class StateAdapter {
             });
             return layout;
         });
-        // 清掉已离场学生的插值缓存，避免无界增长。
+        // 已离场学生：先走向最近出口，到达后淡出消失。
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
         for (const key of [...this._studentPos.keys()]) {
-            if (!seenStudents.has(key)) this._studentPos.delete(key);
+            if (!seenStudents.has(key)) {
+                const pos = this._studentPos.get(key);
+                if (pos && !this._departing.has(key)) {
+                    const lastFloorIdx = pos._lastFloorIdx ?? 0;
+                    const fp = pos._lastFootprint;
+                    const baseY = pos._lastBaseY ?? 0;
+                    const sid = numericId(key);
+                    // 计算最近出口位置
+                    const entranceZs = entranceZsForFootprint(fp);
+                    const nearestZ = entranceZs.reduce((best, cand) =>
+                        Math.abs(cand - pos.z) < Math.abs(best - pos.z) ? cand : best
+                    , entranceZs[0]);
+                    const exitX = sideEntranceXForFootprint(fp) + jitter(sid, 5) * 0.7;
+                    const exitTarget = {
+                        x: Math.min(-1, exitX),
+                        y: baseY + STUDENT_Y,
+                        z: nearestZ + jitter(sid, 6) * 0.9,
+                    };
+                    this._departing.set(key, {
+                        pos: { ...pos },
+                        exitTarget,
+                        floorIdx: lastFloorIdx,
+                        departTime: now,
+                        student: pos._lastStudent || { id: key, position: 'left' },
+                    });
+                }
+                this._studentPos.delete(key);
+            }
+        }
+        // 离场动画：走向出口 → 到达后淡出
+        for (const [key, dep] of [...this._departing.entries()]) {
+            if (seenStudents.has(key)) {
+                this._departing.delete(key);
+                continue;
+            }
+            const elapsed = now - dep.departTime;
+            if (elapsed >= DEPART_TOTAL_MS) {
+                this._departing.delete(key);
+                continue;
+            }
+            // 向出口移动（持续插值）
+            dep.pos = {
+                x: dep.pos.x + (dep.exitTarget.x - dep.pos.x) * DEPART_LERP,
+                y: dep.pos.y + (dep.exitTarget.y - dep.pos.y) * DEPART_LERP,
+                z: dep.pos.z + (dep.exitTarget.z - dep.pos.z) * DEPART_LERP,
+            };
+            const opacity = 1;
+            const fi = Math.min(dep.floorIdx, floorFrames.length - 1);
+            if (fi >= 0 && floorFrames[fi]) {
+                floorFrames[fi].students.push({
+                    ...dep.student,
+                    position: 'leaving',
+                    position3d: dep.pos,
+                    target: dep.exitTarget,
+                    entry3d: dep.pos,
+                    _departingOpacity: Math.max(0, opacity),
+                });
+            }
         }
         return {
             canteenId: canteen.id,

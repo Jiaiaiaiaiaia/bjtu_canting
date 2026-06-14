@@ -279,7 +279,7 @@ def test_lifecycle_record_wait_called_when_serving():
 
 
 def test_lifecycle_uses_random_window_when_not_congested():
-    """窗口未拥堵时，lifecycle 应按随机选择窗口，不应总是去最短队。"""
+    """窗口未拥堵时，学生从一楼进入，选择一楼窗口。"""
     env = simpy.Environment()
     canteen = make_two_floor_canteen(env, "minghu")
     canteens = {"minghu": canteen}
@@ -292,8 +292,7 @@ def test_lifecycle_uses_random_window_when_not_congested():
     env.run(until=30)
 
     assert s.state == "eating"
-    assert s.current_window_id == canteen.windows[1].id
-    assert s.current_floor_id == 2
+    assert s.current_floor_id == 1
 
 
 # 6. 硬等分支：patience 超时但 try_switch 返回 None（唯一食堂无备选）→ yield req 硬等
@@ -360,7 +359,7 @@ def test_lifecycle_hard_waits_when_no_switch_alternative():
 
 
 def test_lifecycle_prefers_seat_on_service_floor():
-    """学生随机到 2 楼窗口打饭后，2 楼有空座时应优先坐 2 楼。"""
+    """学生从一楼进入，一楼拥挤被路由到二楼后，应优先坐二楼。"""
     env = simpy.Environment()
     canteen = make_two_floor_canteen(env, "minghu")
     canteens = {"minghu": canteen}
@@ -368,9 +367,13 @@ def test_lifecycle_prefers_seat_on_service_floor():
     coordinator = StubCoordinator(env)
     router = FixedCanteenRouter(canteen)
 
+    # 一楼排 5 人触发跨层路由（阈值 5）
+    for i in range(5):
+        canteen.windows[0].join_queue(Student(id=900 + i, state="queueing"))
+
     s = Student(id=1, state="arriving", patience_threshold=180)
     env.process(student_lifecycle(env, s, router, canteens, campus, coordinator))
-    env.run(until=30)
+    env.run(until=60)
 
     occupied = [seat for seat in canteen.seats if seat.student is s]
     assert s.state == "eating"
@@ -387,13 +390,17 @@ def test_lifecycle_waiting_for_seat_keeps_service_floor():
     coordinator = StubCoordinator(env)
     router = FixedCanteenRouter(canteen)
 
+    # 一楼排 5 人触发跨层路由到二楼
+    for i in range(5):
+        canteen.windows[0].join_queue(Student(id=800 + i, state="queueing"))
+
     for seat in list(canteen.seat_pool.items):
         canteen.seat_pool.items.remove(seat)
         seat.student = Student(id=1000 + seat.id, state="eating")
 
     s = Student(id=1, state="arriving", patience_threshold=180)
     env.process(student_lifecycle(env, s, router, canteens, campus, coordinator))
-    env.run(until=30)
+    env.run(until=60)
 
     snap = canteen.snapshot()
     waiting = [item for item in snap["students"] if item["id"] == s.id]
